@@ -1,0 +1,80 @@
+{
+  "prompts": 40,
+  "detection": {
+    "BANK_ACCOUNT": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "CARD": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "EMAIL": {
+      "tp": 4,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "INTERNAL_TERM": {
+      "tp": 3,
+      "fp": 1,
+      "fn": 1,
+      "precision": 0.75,
+      "recall": 0.75
+    },
+    "PHONE": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "SA_ID": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "SECRET": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "detection_overall": {
+    "precision": 0.96,
+    "recall": 0.96
+  },
+  "decision_accuracy": 1.0,
+  "confusion": {
+    "LOW": {
+      "LOW": 9
+    },
+    "MEDIUM": {
+      "MEDIUM": 16
+    },
+    "HIGH": {
+      "HIGH": 6
+    },
+    "BLOCKED": {
+      "BLOCKED": 9
+    }
+  },
+  "leakage": {
+    "sensitive_values_bound_for_external_models": 25,
+    "baseline_leaked": 25,
+    "gateway_leaked": 0
+  },
+  "names_missed": 0,
+  "errors": []
+}

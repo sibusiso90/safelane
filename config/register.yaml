@@ -1,0 +1,68 @@
+# AI Tools Register (synthetic example for "Acme Utilities", a fictional company)
+# Status values mirror a real-world register pattern:
+#   approved     - may be used for the data classes listed
+#   restricted   - only with redaction + human review for anything above "public"
+#   not_approved - not assessed yet; requests are blocked (default for unlisted tools)
+#   prohibited   - assessed and refused
+# Unlisted tools are treated as not_approved ("default deny").
+# 'underlying_model_vendor' closes the wrapper loophole: a third-party app that runs on a
+# big hosted LLM inherits that vendor's data-residency profile.
+
+organisation: Acme Utilities (fictional)
+
+data_classes: [public, internal, personal, confidential, secret]
+
+tools:
+  - id: local-assistant
+    name: Acme Assist (on-prem open-weight model)
+    status: approved
+    hosting: on_prem
+    underlying_model_vendor: self-hosted
+    retains_prompts: false
+    max_data_class: confidential
+
+  - id: enterprise-cloud-llm
+    name: Enterprise cloud LLM (contracted, no-training clause)
+    status: approved
+    hosting: offshore
+    underlying_model_vendor: contracted-hosted
+    retains_prompts: false
+    max_data_class: internal
+
+  - id: public-chatbot
+    name: Public consumer chatbot (personal accounts)
+    status: restricted
+    hosting: offshore
+    underlying_model_vendor: consumer-hosted
+    retains_prompts: true
+    max_data_class: public
+
+  - id: pdf-summariser-plugin
+    name: Browser PDF-summariser extension (wrapper on a hosted LLM)
+    status: not_approved
+    hosting: offshore
+    underlying_model_vendor: consumer-hosted
+    retains_prompts: true
+    max_data_class: public
+
+  - id: free-ai-notetaker
+    name: Free AI meeting notetaker
+    status: prohibited
+    hosting: offshore
+    underlying_model_vendor: unknown
+    retains_prompts: true
+    max_data_class: public
+
+# Internal terms that must never leave the organisation (fictional).
+# 'term' matches case-insensitively (spaces and hyphens interchangeable);
+# 'aliases' are codenames matched case-sensitively, so "Kestrel" (the project) is
+# caught but "kestrel" (the bird) is not.
+sensitive_terms:
+  - term: Project Kestrel
+    aliases: [Kestrel]
+  - term: Bluewater tender
+    aliases: [Bluewater]
+  - term: Substation Delta-9
+    aliases: [Delta-9]
+  - term: Acme board pack
+    aliases: []

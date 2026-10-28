@@ -1,0 +1,118 @@
+# SafeLane AI Gateway
+
+**Make the safe way to use AI the easiest way.**
+
+SafeLane sits between staff and AI tools. Each prompt passes through it on the way out, and it does four things:
+
+1. **Checks the AI Tools Register.** Approved, restricted, not approved or prohibited. Anything unlisted is blocked by default, and the user is pointed to an approved alternative.
+2. **Redacts sensitive data before it leaves.** SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. The model never sees the real values; the gateway swaps them back into the answer for the user.
+3. **Sorts each request by risk.** `LOW` → send. `MEDIUM` → send redacted. `HIGH` (e.g. *"should we hire her?"*) → hold for a human reviewer. `BLOCKED` (secrets, injection attempts, unapproved tools) → refuse and explain.
+4. **Logs everything in a tamper-evident audit trail.** A SHA-256 hash chain means any edited or deleted entry is detected. The log stores the *redacted* prompt, so the audit trail does not become a new leak.
+
+It also **checks what comes back**: sensitive data the user never sent, made-up placeholders, unverified links, and *"draft only, a person decides"* labels on high-impact answers.
+
+> Built for the Credify System Thinking Challenge 2026, challenge area 01: *AI & Cybersecurity*.
+> All data in this repository is synthetic. The organisation ("Acme Utilities") is fictional.
+
+![Redaction in action](docs/screenshots/1_redaction.png)
+
+---
+
+## Why a gateway and not just a policy?
+
+Staff use AI because it saves them time. When the approved route is slower than a personal chatbot account, people take the shortcut, and a ban pushes that use out of sight (shadow AI). SafeLane works with that incentive instead of against it: the governed route is the quick one, and the controls run automatically. The full system analysis is in the project documentation.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U[Staff member] -->|prompt + chosen tool| G{SafeLane gateway}
+  G --> R[1. Register check<br/>default deny]
+  R --> D[2. Detect & redact<br/>placeholders kept in memory]
+  D --> P[3. Risk tier<br/>LOW / MEDIUM / HIGH / BLOCKED]
+  P -->|LOW / MEDIUM| M[(AI model<br/>on-prem or approved cloud)]
+  P -->|HIGH| Q[Human review queue<br/>segregation of duties]
+  Q -->|approved| M
+  P -->|BLOCKED| X[Refuse + explain +<br/>approved alternative]
+  M --> O[4. Output checks]
+  O -->|rehydrated answer| U
+  G -.-> A[(Hash-chained audit log<br/>redacted text only)]
+```
+
+| Path | What it is |
+|---|---|
+| `safelane/redactor.py` | Detectors (regex + checksums + context rules), placeholder mapping, rehydration |
+| `safelane/policy.py` | Register, risk rules R1–R8, output checks |
+| `safelane/audit.py` | SQLite hash-chained audit log + verification |
+| `safelane/llm.py` | Mock model (default) or any OpenAI-compatible endpoint, e.g. a local Ollama |
+| `safelane/main.py` | FastAPI app: ask, review queue, audit, stats |
+| `static/index.html` | Single-page demo UI (no build step) |
+| `config/register.yaml` | Example AI Tools Register + sensitive internal terms |
+| `eval/` | Synthetic test sets, evaluation script, results |
+| `tests/` | 16 automated tests |
+
+### Policy rules (evaluated in order; the first match wins)
+
+| Rule | Trigger | Decision |
+|---|---|---|
+| R1 | Tool is unlisted, not approved, or prohibited | BLOCKED + suggest approved tool |
+| R2 | Prompt-injection / control-evasion pattern | BLOCKED + security flag |
+| R3 | Credential or key, going to an off-premises tool | BLOCKED + "rotate it" flag |
+| R4 | Decision about a person or money (hire, dismiss, loan, claim…) | HIGH → human review |
+| R5 | Declared data class above the tool's approved level | BLOCKED (approved tool) / HIGH (restricted tool) |
+| R6 | Sensitive data on a restricted tool | HIGH |
+| R7 | Sensitive data on an approved tool | MEDIUM → redact and send |
+| R8 | Nothing sensitive | LOW → send |
+
+## Run it
+
+Requires Python 3.10+.
+
+```bash
+git clone <this-repo> && cd safelane
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn safelane.main:app --reload
+```
+
+Open http://localhost:8000 and use the sample buttons (Personal info, API key, Hiring decision, Wrapper plugin, Injection…). Approve a held request in **Review queue** under a *different* name, then click **Verify audit chain** under **Audit log**.
+
+**Use a real model (optional).** By default a mock model is used, so nothing leaves your machine and no API key is needed. To use a local model:
+```bash
+export SAFELANE_LLM_URL=http://localhost:11434/v1     # Ollama's OpenAI-compatible API
+export SAFELANE_LLM_MODEL=qwen3:4b-instruct
+```
+
+**Tests and evaluation**
+```bash
+pytest -q                                   # 16 tests
+python eval/run_eval.py eval/heldout.jsonl  # also: prompts.jsonl, adversarial.jsonl
+```
+
+## Results (synthetic data; see `eval/README.md` for method and caveats)
+
+| Test set | Detection precision / recall | Decision accuracy | Sensitive values reaching an external model |
+|---|---|---|---|
+| Held-out, v1 | 80.0% / 40.0% | 45.0% | 5 of 10 |
+| **Held-out, v2** | **88.9% / 80.0%** | **95.0%** | **1 of 10** |
+| Policy-only baseline | n/a | n/a | 10 of 10 |
+
+v1 was tested against a hand-written adversarial set, failed in specific ways, and was improved. It was then scored once on a held-out set that was written before the improvements. The remaining held-out miss (a bare `admin / P@ssw0rd` pair) is reported, not patched.
+
+## Known limitations
+
+- **Rule-based detection.** It's explainable and fast, but it misses free-text **names** and unlabelled credentials. Next step: an on-prem NER model behind the same interface.
+- **Small, self-written test sets.** Needs independent red-teaming and a consented sample of real prompts.
+- **Users can't currently bypass the gateway from inside it, but they can open a browser.** The gateway only works if network controls (proxy/CASB rules) also block unapproved AI sites. That is a deployment dependency, not code.
+- **Review queue is in memory** (by design, so real values never touch disk), so pending reviews are lost on restart. Production would use an encrypted store with expiry.
+- **Demo identity is a free-text name.** Production would use SSO/Active Directory and role-based reviewer rights.
+- **Output checks are heuristics.** They flag; they do not prove an answer is correct.
+
+## Contribution and AI-assistance disclosure
+
+- **Sibusiso Mahlangu (sole entrant):** problem framing and system analysis; the design pattern (a register with four statuses, default deny, closing the "wrapper app" loophole, on-prem first, risk-tiered human review), drawn from his own work on AI governance and an on-premises AI pilot at a South African state-owned entity; choice of intervention; review and acceptance of all code and results.
+- **AI assistance:** an AI assistant (Claude, by Anthropic) was used under his direction to write much of the code, the synthetic test sets and first drafts of the documentation. Every result in this repository was produced by running the code included here.
+
+## Licence
+
+MIT

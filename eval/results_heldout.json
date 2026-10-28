@@ -1,0 +1,82 @@
+{
+  "prompts": 20,
+  "detection": {
+    "BANK_ACCOUNT": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "EMAIL": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "INTERNAL_TERM": {
+      "tp": 1,
+      "fp": 1,
+      "fn": 1,
+      "precision": 0.5,
+      "recall": 0.5
+    },
+    "PHONE": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "SA_ID": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "SECRET": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 1,
+      "precision": 1.0,
+      "recall": 0.6666666666666666
+    }
+  },
+  "detection_overall": {
+    "precision": 0.8888888888888888,
+    "recall": 0.8
+  },
+  "decision_accuracy": 0.95,
+  "confusion": {
+    "LOW": {
+      "LOW": 5
+    },
+    "MEDIUM": {
+      "MEDIUM": 7
+    },
+    "HIGH": {
+      "HIGH": 3
+    },
+    "BLOCKED": {
+      "BLOCKED": 4,
+      "LOW": 1
+    }
+  },
+  "leakage": {
+    "sensitive_values_bound_for_external_models": 10,
+    "baseline_leaked": 10,
+    "gateway_leaked": 1
+  },
+  "names_missed": 0,
+  "errors": [
+    {
+      "category": "secret",
+      "expected": "BLOCKED",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Login for the SCADA historian is admin / P@ssw0rd2026, write the handover note."
+    }
+  ]
+}
