@@ -1,0 +1,46 @@
+name: Deploy demo to GitHub Pages
+
+# The Pages site runs the same safelane package in the browser (Pyodide), so it
+# needs no server. See static/pyodide-api.js.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt && pytest -q
+      - name: Assemble static site
+        run: |
+          mkdir -p _site/safelane _site/config
+          cp static/index.html static/pyodide-api.js _site/
+          cp safelane/__init__.py safelane/audit.py safelane/llm.py safelane/policy.py \
+             safelane/redactor.py safelane/service.py _site/safelane/
+          cp config/register.yaml _site/config/
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

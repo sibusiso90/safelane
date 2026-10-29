@@ -11,6 +11,8 @@ SafeLane sits between staff and AI tools. Each prompt passes through it on the w
 
 It also **checks what comes back**: sensitive data the user never sent, made-up placeholders, unverified links, and *"draft only, a person decides"* labels on high-impact answers.
 
+**▶ Try it online: https://sibusiso90.github.io/safelane/** (no install; it runs entirely in your browser, so nothing you type is sent anywhere).
+
 > Built for the Credify System Thinking Challenge 2026, challenge area 01: *AI & Cybersecurity*.
 > All data in this repository is synthetic. The organisation ("Acme Utilities") is fictional.
 
@@ -30,6 +32,7 @@ Staff use AI because it saves them time. When the approved route is slower than 
 - **Plain HTML/CSS/JavaScript** single-page UI, with no build step
 - **httpx** for calling an optional OpenAI-compatible model endpoint (e.g. a local **Ollama**)
 - **pytest** for the automated tests
+- **Pyodide** (Python compiled to WebAssembly) and **GitHub Pages / Actions** for the online demo
 
 No cloud services, API keys or external databases are required to run it.
 
@@ -56,8 +59,10 @@ flowchart LR
 | `safelane/policy.py` | Register, risk rules R1–R8, output checks |
 | `safelane/audit.py` | SQLite hash-chained audit log + verification |
 | `safelane/llm.py` | Mock model (default) or any OpenAI-compatible endpoint, e.g. a local Ollama |
-| `safelane/main.py` | FastAPI app: ask, review queue, audit, stats |
+| `safelane/service.py` | Gateway logic (ask, review queue, audit), independent of any web framework |
+| `safelane/main.py` | FastAPI app exposing the gateway over HTTP |
 | `static/index.html` | Single-page demo UI (no build step) |
+| `static/pyodide-api.js` | In-browser backend for the online demo: runs the same `safelane` package via Pyodide |
 | `config/register.yaml` | Example AI Tools Register + sensitive internal terms |
 | `eval/` | Synthetic test sets, evaluation script, results |
 | `tests/` | 16 automated tests |
@@ -76,6 +81,10 @@ flowchart LR
 | R8 | Nothing sensitive | LOW → send |
 
 ## Run it
+
+**Online:** https://sibusiso90.github.io/safelane/ is the same code, deployed to GitHub Pages by `.github/workflows/pages.yml`. With no server there, the page loads Python in the browser (Pyodide) and runs the gateway locally. Each visitor gets their own fresh audit log and review queue, which reset on reload.
+
+**Locally:**
 
 Requires Python 3.10+.
 

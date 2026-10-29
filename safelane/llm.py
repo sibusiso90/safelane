@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import os
 
-import httpx
-
 
 def mock_answer(prompt: str, tool_id: str) -> str:
     preview = prompt if len(prompt) < 160 else prompt[:157] + "..."
@@ -24,6 +22,8 @@ def ask(prompt: str, tool_id: str) -> str:
     url = os.getenv("SAFELANE_LLM_URL")
     if not url:
         return mock_answer(prompt, tool_id)
+    import httpx  # only needed for a real model; keeps the in-browser build dependency-free
+
     model = os.getenv("SAFELANE_LLM_MODEL", "qwen3:4b-instruct")
     r = httpx.post(
         f"{url.rstrip('/')}/chat/completions",
