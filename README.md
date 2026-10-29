@@ -2,6 +2,9 @@
 
 **Make the safe way to use AI the easiest way.**
 
+**▶ Live demo:** [sibusiso90.github.io/safelane](https://sibusiso90.github.io/safelane/). No install needed: it runs entirely in your browser, so nothing you type is sent anywhere.  
+**🎬 Demo video:** [docs/SafeLane_Demo.mp4](docs/SafeLane_Demo.mp4) is a 5½-minute narrated walkthrough of every feature.
+
 SafeLane sits between staff and AI tools. Each prompt passes through it on the way out, and it does four things:
 
 1. **Checks the AI Tools Register.** Approved, restricted, not approved or prohibited. Anything unlisted is blocked by default, and the user is pointed to an approved alternative.
@@ -10,8 +13,6 @@ SafeLane sits between staff and AI tools. Each prompt passes through it on the w
 4. **Logs everything in a tamper-evident audit trail.** A SHA-256 hash chain means any edited or deleted entry is detected. The log stores the *redacted* prompt, so the audit trail does not become a new leak.
 
 It also **checks what comes back**: sensitive data the user never sent, made-up placeholders, unverified links, and *"draft only, a person decides"* labels on high-impact answers.
-
-**▶ Try it online: https://sibusiso90.github.io/safelane/** (no install; it runs entirely in your browser, so nothing you type is sent anywhere).
 
 > Built for the Credify System Thinking Challenge 2026, challenge area 01: *AI & Cybersecurity*.
 > All data in this repository is synthetic. The organisation ("Acme Utilities") is fictional.
