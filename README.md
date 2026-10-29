@@ -20,7 +20,18 @@ It also **checks what comes back**: sensitive data the user never sent, made-up 
 
 ## Why a gateway and not just a policy?
 
-Staff use AI because it saves them time. When the approved route is slower than a personal chatbot account, people take the shortcut, and a ban pushes that use out of sight (shadow AI). SafeLane works with that incentive instead of against it: the governed route is the quick one, and the controls run automatically. The full system analysis is in the project documentation.
+Staff use AI because it saves them time. When the approved route is slower than a personal chatbot account, people take the shortcut, and a ban pushes that use out of sight (shadow AI). SafeLane works with that incentive instead of against it: the governed route is the quick one, and the controls run automatically. The full system analysis (stakeholders, root causes, causal loops, options considered, risks) is in [docs/SafeLane_Project_Documentation.pdf](docs/SafeLane_Project_Documentation.pdf).
+
+## Technologies used
+
+- **Python 3.10+** with **FastAPI** and **Uvicorn** for the gateway API
+- **Pydantic** for request validation; **PyYAML** for the AI Tools Register
+- **SQLite** (Python standard library) for the hash-chained audit log, using **SHA-256**
+- **Plain HTML/CSS/JavaScript** single-page UI, with no build step
+- **httpx** for calling an optional OpenAI-compatible model endpoint (e.g. a local **Ollama**)
+- **pytest** for the automated tests
+
+No cloud services, API keys or external databases are required to run it.
 
 ## Architecture
 
@@ -69,7 +80,7 @@ flowchart LR
 Requires Python 3.10+.
 
 ```bash
-git clone <this-repo> && cd safelane
+git clone https://github.com/sibusiso90/safelane.git && cd safelane
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn safelane.main:app --reload

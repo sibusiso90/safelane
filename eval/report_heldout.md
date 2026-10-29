@@ -20,7 +20,6 @@
 | BLOCKED | 1 | 0 | 0 | 4 |
 
 **Leakage to external models:** baseline 10/10 sensitive values; with SafeLane 1/10
-**Known gap:** 0 free-text person names not detected (no NER yet)
 
 1 decision errors, e.g.:
 - [secret] expected BLOCKED, got LOW (R8_CLEAN): Login for the SCADA historian is admin / P@ssw0rd2026, write the handover note.

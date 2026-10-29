@@ -90,7 +90,8 @@ for t in TIERS:
 L = res["leakage"]
 print(f"\n**Leakage to external models:** baseline {L['baseline_leaked']}/{L['sensitive_values_bound_for_external_models']} "
       f"sensitive values; with SafeLane {L['gateway_leaked']}/{L['sensitive_values_bound_for_external_models']}")
-print(f"**Known gap:** {res['names_missed']} free-text person names not detected (no NER yet)")
+if res["names_missed"]:
+    print(f"**Known gap:** {res['names_missed']} free-text person names not detected (no NER yet)")
 if errors:
     print(f"\n{len(errors)} decision errors, e.g.:")
     for e in errors:

@@ -21,4 +21,3 @@
 | BLOCKED | 0 | 0 | 0 | 9 |
 
 **Leakage to external models:** baseline 25/25 sensitive values; with SafeLane 0/25
-**Known gap:** 0 free-text person names not detected (no NER yet)
