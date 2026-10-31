@@ -6,9 +6,12 @@ not in the database, someone who can write to the database cannot rewrite an ent
 then recompute the chain after it. A signed "head" record (the last entry's id and MAC)
 is kept outside the table, so deleting the newest entries is caught too.
 
-Where the key lives decides what this protects against. The demo keeps it in a file
-next to the database (or in memory); a real deployment would hold it in a secret store
-the database administrators cannot read, and copy the head to write-once storage.
+Where the key and head live decides what this protects against. The demo keeps both in
+files next to the database (or in memory), which stops someone who can only edit the
+database. Someone who can write those files too could restore an older head together
+with a shortened database, and a restart would not notice. A real deployment holds the
+key in a secret store (SAFELANE_AUDIT_KEY) and the head on write-once storage
+(SAFELANE_AUDIT_HEAD) that the database administrators cannot change.
 
 The log stores the *redacted* prompt and the detection types - never the raw sensitive
 values - so the audit trail itself does not become a new data-leak risk.
@@ -50,7 +53,10 @@ class AuditLog:
         self._lock = threading.Lock()
         self._tampered: dict | None = None  # original row kept by simulate_tamper()
         self._key = _load_key(path, key)
-        self._head_file = None if path == ":memory:" else Path(f"{path}.head")
+        # The head can live elsewhere (SAFELANE_AUDIT_HEAD), e.g. on write-once storage, so that
+        # whoever can write the database cannot also roll the head back to an older copy.
+        head = os.getenv("SAFELANE_AUDIT_HEAD") or (None if path == ":memory:" else f"{path}.head")
+        self._head_file = Path(head) if head else None
         self._head: dict | None = None
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)")

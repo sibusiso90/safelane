@@ -41,8 +41,11 @@ class Gateway:
         try:
             token, acct = self._accounts().login(username, password)
         except AuthError as e:
-            if e.status == 401:
-                self.audit.append("login_failed", {"user": username.strip().lower()[:64]})
+            if e.status in (401, 429):
+                # Name the account only if it exists: a typed username can be a mistyped password.
+                known = self._accounts().exists(username)
+                self.audit.append("login_failed", {"user": username.strip().lower() if known else "(unknown account)",
+                                                   "locked": e.status == 429})
             raise GatewayError(e.status, e.detail) from e
         self.audit.append("login", {"user": acct.username, "role": acct.role})
         return {"token": token, "account": acct.view()}

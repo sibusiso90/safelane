@@ -115,7 +115,7 @@ As Thandi, use the sample buttons (Personal info, API key, Hiring decision, Wrap
 
 The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, signing in as each account in turn, from redaction to a reviewer releasing a held request to a caught tampering attempt. **Simulate tampering** (admin only) edits one stored entry without updating its hash, so you can watch verification fail and then restore it. The online demo always shows it (each visitor has their own in-browser log). On a server it needs demo mode too, because it lets an admin edit the log.
 
-**Before real use**, replace `config/accounts.yaml` (or point `SAFELANE_ACCOUNTS` at your own file, or sign people in through your identity provider) and set `SAFELANE_AUDIT_KEY` to a secret kept outside the server's disk. Without it, the audit key is generated into `safelane_audit.db.key` next to the log, which stops someone who can only edit the database, but not someone who can also read that file.
+**Before real use**, replace `config/accounts.yaml` (or point `SAFELANE_ACCOUNTS` at your own file, or sign people in through your identity provider) set `SAFELANE_AUDIT_KEY` to a secret kept outside the server's disk, and point `SAFELANE_AUDIT_HEAD` at write-once storage. Without them, the key and the signed head are kept in files next to the log. That stops someone who can only edit the database, but not someone who can also write those files: they could restore an older head together with a shortened log.
 
 **Use a real model (optional).** By default a mock model is used, so nothing leaves your machine and no API key is needed. To use a local model:
 ```bash

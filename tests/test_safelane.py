@@ -88,6 +88,7 @@ def test_v5_names(text, names):
     ("The docs are at example.com", None),
     ("mail thabo at acme dot co dot za", "thabo at acme dot co dot za"),
     ("write to lerato[at]mail.example", "lerato[at]mail.example"),
+    ("mail thandeka.zulu at acme.co.za today", "thandeka.zulu at acme.co.za"),  # looks like an address
 ])
 def test_obfuscated_email_needs_a_spelled_dot_or_brackets(text, email):
     found = [d.value for d in Redactor().detect(text) if d.kind == "EMAIL"]
@@ -491,3 +492,36 @@ def test_demo_accounts_only_work_in_demo_mode(tmp_path, monkeypatch):
     import safelane.main as m
     with pytest.raises(RuntimeError):
         importlib.reload(m)
+
+
+def test_parallel_guesses_cannot_exceed_the_lockout_limit():
+    import threading
+    a = Accounts(ACCOUNTS)
+    codes = []
+
+    def guess():
+        try:
+            a.login("thandi", "wrong")
+        except Exception as e:
+            codes.append(e.status)
+    ts = [threading.Thread(target=guess) for _ in range(12)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert codes.count(401) == 5 and codes.count(429) == 7
+
+
+def test_failed_sign_in_never_logs_the_typed_text(gw):
+    for user in ("Wint3r!Gate", "sipho"):
+        with pytest.raises(GatewayError):
+            gw.login(user, "wrong")
+    users = [e["user"] for e in gw.audit.entries(10) if e["event"] == "login_failed"]
+    assert users == ["sipho", "(unknown account)"]
+
+
+def test_audit_head_can_live_elsewhere(tmp_path, monkeypatch):
+    monkeypatch.setenv("SAFELANE_AUDIT_HEAD", str(tmp_path / "worm" / "head.json"))
+    (tmp_path / "worm").mkdir()
+    log = AuditLog(str(tmp_path / "a.db"))
+    log.append("request", {"tier": "LOW"})
+    assert (tmp_path / "worm" / "head.json").exists() and not (tmp_path / "a.db.head").exists()
+    assert log.verify()["ok"]

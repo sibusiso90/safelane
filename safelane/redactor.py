@@ -92,9 +92,13 @@ def strong_secret(raw: str) -> bool:
 
 
 def obfuscated_email(raw: str) -> bool:
-    """`name at domain.co.za` is ordinary English ("meet us at acme.co.za"); only count it
-    when the writer also spelled out a dot or used a bracketed [at] / (at)."""
-    return bool(re.search(r"(?i)\[(?:at|dot)\]|\((?:at|dot)\)|\sdot\s", raw))
+    """`word at domain.co.za` is ordinary English ("meet us at acme.co.za"). Count it when the
+    writer spelled out a dot, used a bracketed [at] / (at), or wrote a part before "at" that
+    looks like an address ("thandeka.zulu", "j_smith", "ops2")."""
+    if re.search(r"(?i)\[(?:at|dot)\]|\((?:at|dot)\)|\sdot\s", raw):
+        return True
+    local = re.split(r"(?i)\s+at\s+", raw, maxsplit=1)[0]
+    return bool(re.search(r"[._+\-\d]", local))
 
 
 def complex_secret(raw: str) -> bool:

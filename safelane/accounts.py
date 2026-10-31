@@ -121,6 +121,9 @@ class Accounts:
         self._failures: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
+    def exists(self, username: str) -> bool:
+        return username.strip().lower() in self._users
+
     def directory(self) -> list[dict]:
         return [a.view() for a, _ in self._users.values()]
 
@@ -128,14 +131,15 @@ class Accounts:
         key = username.strip().lower()
         now = time.time()
         with self._lock:
+            # Count the attempt before the slow hash, so parallel guesses cannot all slip
+            # under the limit; a successful sign-in clears the count.
             recent = [t for t in self._failures.get(key, []) if now - t < LOCKOUT_WINDOW]
-            self._failures[key] = recent
             if len(recent) >= MAX_FAILURES:
+                self._failures[key] = recent
                 raise AuthError(429, "Too many failed sign-ins. Try again in 15 minutes.")
+            self._failures[key] = recent + [now]
         acct, stored = self._users.get(key) or (None, _dummy_hash())
         if not check_password(password, stored) or acct is None:
-            with self._lock:
-                self._failures.setdefault(key, []).append(now)
             raise AuthError(401, "Wrong username or password.")
         token = secrets.token_urlsafe(32)
         with self._lock:

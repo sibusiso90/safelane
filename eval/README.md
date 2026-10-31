@@ -72,6 +72,8 @@ On held-out 4, which is the most independent test so far, v5 is clearly better t
 - **An e-mail with spelled-out dots in its first part** (*thandeka dot zulu at acmeutilities dot co dot za*): it was redacted, but as the wrong span (*me at thandeka dot zulu*), so part of the address went out.
 - **One over-redaction:** *Heritage Day* was taken for a name.
 
+After scoring, an automated security review pointed out that requiring a spelled-out *dot* let an address like *thandeka.zulu at acme.co.za* through. The plain *at* form now also counts when the part before it looks like an address (it has `.`, `_`, `+`, `-` or a digit). A single plain word before *at* (*us at acme.co.za*) is still not redacted, which is the trade-off. Every set, including held-out 4, scores the same with this change, so no number above moved.
+
 ## Honest limits
 - **v2 held-out miss, fixed in v3:** `admin / P@ssw0rd2026`, a username/password pair with no "password" label. It was deliberately not patched before v2 was reported. v3's credential-pair rule catches it, and its effect was measured on held-out 2, not on the set that exposed it.
 - **Names are found from context only.** A name with no cue, in lower case, or in a bare list (*Sipho, Thandi and Mike will attend*) is missed, and company or famous names that look like people (*Grant Thornton from audit*) are redacted when they need not be. 15 of the 70 names in the templated set are still missed. The next step is an on-prem NER model (e.g. a small multilingual model) behind the same interface.
