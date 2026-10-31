@@ -1,7 +1,8 @@
 """Evaluate SafeLane on the synthetic labelled set.
 
 Reports:
-  1. Detection precision / recall per entity type (value-level matching)
+  1. Detection precision / recall per entity type (value-level matching; person names
+     count from v3 on)
   2. Decision accuracy (gateway tier vs expected tier) with a confusion table
   3. Leakage: sensitive values that would reach an EXTERNAL model
        - baseline (policy + training only: nothing stops the paste)
@@ -32,15 +33,12 @@ base_leak = gw_leak = total_sensitive = 0
 for r in rows:
     d = eng.evaluate(r["prompt"], r["tool_id"])
     found = {(x.kind, norm(x.value)) for x in d.redaction.detections}
-    truth = {(k, norm(v)) for k, v in r["entities"] if k != "NAME"}
+    truth = {(k, norm(v)) for k, v in r["entities"]}
     for k, v in truth:
         (tp if (k, v) in found else fn)[k] += 1
     for k, v in found:
         if (k, v) not in truth:
             fp[k] += 1
-    for k, v in r["entities"]:
-        if k == "NAME":
-            fn["NAME (not in scope)"] += 0 if norm(v) in {fv for _, fv in found} else 1
     confusion[r["expected_tier"]][d.tier] += 1
     if d.tier != r["expected_tier"]:
         errors.append({"category": r["category"], "expected": r["expected_tier"], "got": d.tier,
@@ -48,7 +46,7 @@ for r in rows:
     # Leakage to external (non on-prem) tools
     tool = reg.get(r["tool_id"])
     if tool.get("hosting") != "on_prem":
-        sens = [v for k, v in r["entities"] if k != "NAME"]
+        sens = [v for _, v in r["entities"]]
         total_sensitive += len(sens)
         base_leak += len(sens)  # baseline: nothing technical stops the paste
         sent = d.outbound_prompt or ""
@@ -60,7 +58,7 @@ for k in types:
     p = tp[k] / (tp[k] + fp[k]) if tp[k] + fp[k] else None
     rc = tp[k] / (tp[k] + fn[k]) if tp[k] + fn[k] else None
     det[k] = {"tp": tp[k], "fp": fp[k], "fn": fn[k], "precision": p, "recall": rc}
-all_tp, all_fp, all_fn = (sum(c[k] for k in types if not k.startswith("NAME")) for c in (tp, fp, fn))
+all_tp, all_fp, all_fn = (sum(c[k] for k in types) for c in (tp, fp, fn))
 correct = sum(confusion[t][t] for t in TIERS)
 res = {
     "prompts": len(rows),
@@ -71,7 +69,6 @@ res = {
     "confusion": {t: dict(confusion[t]) for t in TIERS},
     "leakage": {"sensitive_values_bound_for_external_models": total_sensitive,
                 "baseline_leaked": base_leak, "gateway_leaked": gw_leak},
-    "names_missed": fn["NAME (not in scope)"],
     "errors": errors,
 }
 (ROOT / "eval" / f"results_{DATA.stem}.json").write_text(json.dumps(res, indent=2))
@@ -81,7 +78,7 @@ print(f"## SafeLane evaluation: {DATA.name} ({len(rows)} synthetic prompts)\n")
 print("| Entity type | TP | FP | FN | Precision | Recall |\n|---|---|---|---|---|---|")
 for k, v in det.items():
     print(f"| {k} | {v['tp']} | {v['fp']} | {v['fn']} | {pct(v['precision'])} | {pct(v['recall'])} |")
-print(f"\n**Overall detection (in-scope types):** precision {pct(res['detection_overall']['precision'])}, "
+print(f"\n**Overall detection:** precision {pct(res['detection_overall']['precision'])}, "
       f"recall {pct(res['detection_overall']['recall'])}")
 print(f"**Decision accuracy:** {pct(res['decision_accuracy'])} ({correct}/{len(rows)})\n")
 print("| Expected \\ Got | " + " | ".join(TIERS) + " |\n|---|" + "---|" * len(TIERS))
@@ -90,8 +87,6 @@ for t in TIERS:
 L = res["leakage"]
 print(f"\n**Leakage to external models:** baseline {L['baseline_leaked']}/{L['sensitive_values_bound_for_external_models']} "
       f"sensitive values; with SafeLane {L['gateway_leaked']}/{L['sensitive_values_bound_for_external_models']}")
-if res["names_missed"]:
-    print(f"**Known gap:** {res['names_missed']} free-text person names not detected (no NER yet)")
 if errors:
     print(f"\n{len(errors)} decision errors, e.g.:")
     for e in errors:

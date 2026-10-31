@@ -1,0 +1,165 @@
+{
+  "prompts": 30,
+  "detection": {
+    "EMAIL": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "NAME": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 16,
+      "precision": null,
+      "recall": 0.0
+    },
+    "PHONE": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "SECRET": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 3,
+      "precision": null,
+      "recall": 0.0
+    }
+  },
+  "detection_overall": {
+    "precision": 1.0,
+    "recall": 0.13636363636363635
+  },
+  "decision_accuracy": 0.5,
+  "confusion": {
+    "LOW": {
+      "LOW": 10
+    },
+    "MEDIUM": {
+      "LOW": 12,
+      "MEDIUM": 3
+    },
+    "HIGH": {
+      "HIGH": 2
+    },
+    "BLOCKED": {
+      "LOW": 3
+    }
+  },
+  "leakage": {
+    "sensitive_values_bound_for_external_models": 20,
+    "baseline_leaked": 20,
+    "gateway_leaked": 17
+  },
+  "errors": [
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Please draft a thank-you note to Mrs Zodwa Mthembu for hosting the depot open day."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Summarise this complaint: 'I, Kobus Steenkamp, was billed twice for March.'"
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Translate into Afrikaans: Dear Ms Fourie, your application has been received."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Ravi Govender from procurement asked for a summary of the fleet policy. Write it in three bullets."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Make this sound more professional: tell sibongile the site visit moved to thursday"
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Write a birthday message for Ntombi in the finance team."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Dr. Anele Ngcobo will present the safety stats; write a short introduction for the speaker."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Rephrase: Prof van der Merwe disagrees with the load-shedding forecast."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Draft an e-mail to Mandla Zungu-Botha confirming the transfer to the Mthatha depot."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Can you check the grammar: 'Regards, Chantelle Adams, Customer Care'"
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Write onboarding notes for our new technician, Lwazi Mabuza."
+    },
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Meeting notes: attendees were J. Pretorius, N. Mokoena and the regional manager."
+    },
+    {
+      "category": "secret",
+      "expected": "BLOCKED",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "VPN login is user: kmolefe pass: Spring#2026 - write the remote-access guide."
+    },
+    {
+      "category": "secret",
+      "expected": "BLOCKED",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Use root / Tr4nsf0rmer! to explain how to reset the router config."
+    },
+    {
+      "category": "secret",
+      "expected": "BLOCKED",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Credentials for the meter portal are ops_admin:Q7v!pz92, summarise how to rotate them."
+    }
+  ]
+}
