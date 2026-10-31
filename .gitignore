@@ -4,3 +4,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 .DS_Store
+.playwright-mcp/
+*.db.key
+*.db.head
+*.db.tmp

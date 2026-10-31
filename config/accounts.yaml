@@ -1,0 +1,32 @@
+# Demo sign-in accounts for "Acme Utilities" (fictional). One per role, all with the
+# password below, which the sign-in page shows. Replace this file (or sign people in
+# through your identity provider) before using SafeLane with real staff.
+# Make a hash with: python -c "from safelane.accounts import hash_password; print(hash_password('...'))"
+demo_password: safelane-demo
+
+accounts:
+  - username: thandi
+    name: Thandi Nkosi
+    role: staff
+    department: Customer Care
+    password_hash: "pbkdf2_sha256$600000$0069a77da7416726d0f415a29140d587$6a8873512f0933e6772293117dacb8b9232bf742ad975738164964a1dfcde6f7"
+  - username: sipho
+    name: Sipho Dlamini
+    role: reviewer
+    department: Information Security
+    password_hash: "pbkdf2_sha256$600000$779890f5b7a356a2a791a7c8b54029e5$3c04c4c36f30ae6fcf5e7a71f1f25b49d1b07c8857b5c56c2743564b7b0d2504"
+  - username: pieter
+    name: Pieter van Wyk
+    role: reviewer
+    department: Human Resources
+    password_hash: "pbkdf2_sha256$600000$e0a713723b88cc5cd68def615c51f864$c4b5fd3ded61229abd59e226ff1b574ad224f84affe4f30af0a2594299d64c93"
+  - username: zanele
+    name: Zanele Mokoena
+    role: auditor
+    department: Internal Audit
+    password_hash: "pbkdf2_sha256$600000$185e4b67876eeec372c243ca817eaa94$0f4f6058e9de0f05bdeef0ba87cc90b54b76ac85d799358b1573dac95fe7c8e1"
+  - username: ayesha
+    name: Ayesha Patel
+    role: admin
+    department: IT Operations
+    password_hash: "pbkdf2_sha256$600000$88334d21c7983828f3372cb0dada45a1$810b1d6416ae2e31b52230976db6cf881572ec56f09c0d0e6d0d94246b20c1cb"

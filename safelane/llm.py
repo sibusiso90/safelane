@@ -22,10 +22,10 @@ def ask(prompt: str, tool_id: str) -> str:
     url = os.getenv("SAFELANE_LLM_URL")
     if not url:
         return mock_answer(prompt, tool_id)
-    import httpx  # only needed for a real model; keeps the in-browser build dependency-free
+    import httpx2  # only needed for a real model; keeps the in-browser build dependency-free
 
     model = os.getenv("SAFELANE_LLM_MODEL", "qwen3:4b-instruct")
-    r = httpx.post(
+    r = httpx2.post(
         f"{url.rstrip('/')}/chat/completions",
         headers={"Authorization": f"Bearer {os.getenv('SAFELANE_LLM_KEY', 'none')}"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},

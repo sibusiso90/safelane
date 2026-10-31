@@ -1,26 +1,67 @@
-"""Tamper-evident audit log (SQLite, hash-chained).
+"""Tamper-evident audit log (SQLite, keyed hash chain).
 
-Each entry stores the hash of the previous entry. Editing or deleting any past row
-breaks the chain, which `verify()` detects. The log stores the *redacted* prompt and
-the detection types - never the raw sensitive values - so the audit trail itself does
-not become a new data-leak risk.
+Each entry stores an HMAC-SHA256 of its contents and of the previous entry's MAC, so
+editing or deleting any past row breaks the chain. Because the MAC needs a key that is
+not in the database, someone who can write to the database cannot rewrite an entry and
+then recompute the chain after it. A signed "head" record (the last entry's id and MAC)
+is kept outside the table, so deleting the newest entries is caught too.
+
+Where the key lives decides what this protects against. The demo keeps it in a file
+next to the database (or in memory); a real deployment would hold it in a secret store
+the database administrators cannot read, and copy the head to write-once storage.
+
+The log stores the *redacted* prompt and the detection types - never the raw sensitive
+values - so the audit trail itself does not become a new data-leak risk.
 """
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import os
+import secrets
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 
 GENESIS = "0" * 64
+SCHEME = "hmac-sha256-v2"
+
+
+def _load_key(path: str, key: str | bytes | None) -> bytes:
+    if key is None:
+        key = os.getenv("SAFELANE_AUDIT_KEY")
+    if key:
+        return key.encode() if isinstance(key, str) else key
+    if path == ":memory:":
+        return secrets.token_bytes(32)
+    # Demo fallback: a random key in a file beside the database, readable by its owner only.
+    key_file = Path(f"{path}.key")
+    if not key_file.exists():
+        fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(secrets.token_hex(32))
+    return bytes.fromhex(key_file.read_text().strip())
 
 
 class AuditLog:
-    def __init__(self, path: str = "safelane_audit.db"):
+    def __init__(self, path: str = "safelane_audit.db", key: str | bytes | None = None):
         self._lock = threading.Lock()
         self._tampered: dict | None = None  # original row kept by simulate_tamper()
+        self._key = _load_key(path, key)
+        self._head_file = None if path == ":memory:" else Path(f"{path}.head")
+        self._head: dict | None = None
         self.db = sqlite3.connect(path, check_same_thread=False)
+        self.db.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+        scheme = self.db.execute("SELECT v FROM meta WHERE k = 'scheme'").fetchone()
+        if scheme is None:
+            # A log from before keyed hashes cannot be verified with a key; keep it aside, start fresh.
+            exists = self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit'").fetchone()
+            if exists:
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+                self.db.execute(f"ALTER TABLE audit RENAME TO audit_legacy_{stamp}")
+            self.db.execute("INSERT INTO meta (k, v) VALUES ('scheme', ?)", (SCHEME,))
         self.db.execute(
             """CREATE TABLE IF NOT EXISTS audit (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,10 +69,22 @@ class AuditLog:
                 prev_hash TEXT NOT NULL, hash TEXT NOT NULL)"""
         )
         self.db.commit()
+        if self._head_file and self._head_file.exists():
+            self._head = json.loads(self._head_file.read_text())
 
-    @staticmethod
-    def _hash(ts: str, event: str, payload: str, prev: str) -> str:
-        return hashlib.sha256(f"{ts}|{event}|{payload}|{prev}".encode()).hexdigest()
+    def _hash(self, ts: str, event: str, payload: str, prev: str) -> str:
+        msg = json.dumps([ts, event, payload, prev]).encode()  # unambiguous field boundaries
+        return hmac.new(self._key, msg, hashlib.sha256).hexdigest()
+
+    def _head_mac(self, id_: int, h: str) -> str:
+        return hmac.new(self._key, f"head|{id_}|{h}".encode(), hashlib.sha256).hexdigest()
+
+    def _write_head(self, id_: int, h: str) -> None:
+        self._head = {"id": id_, "hash": h, "mac": self._head_mac(id_, h)}
+        if self._head_file:
+            tmp = self._head_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self._head))
+            tmp.replace(self._head_file)
 
     def append(self, event: str, payload: dict) -> int:
         with self._lock:
@@ -45,24 +98,38 @@ class AuditLog:
                 (ts, event, body, prev, h),
             )
             self.db.commit()
+            self._write_head(cur.lastrowid, h)
             return cur.lastrowid
 
     def entries(self, limit: int = 200) -> list[dict]:
         rows = self.db.execute(
-            "SELECT id, ts, event, payload, hash FROM audit ORDER BY id DESC LIMIT ?", (limit,)
+            "SELECT id, ts, event, payload, hash FROM audit ORDER BY id DESC LIMIT ?", (max(1, limit),)
         ).fetchall()
         return [{"id": r[0], "ts": r[1], "event": r[2], **json.loads(r[3]), "hash": r[4][:12]} for r in rows]
 
     def verify(self) -> dict:
         prev = GENESIS
         n = 0
-        for id_, ts, event, payload, prev_hash, h in self.db.execute(
-            "SELECT id, ts, event, payload, prev_hash, hash FROM audit ORDER BY id"
-        ):
+        last_id = None
+        with self._lock:
+            rows = self.db.execute("SELECT id, ts, event, payload, prev_hash, hash FROM audit ORDER BY id").fetchall()
+            head = self._head
+        for id_, ts, event, payload, prev_hash, h in rows:
             n += 1
-            if prev_hash != prev or self._hash(ts, event, payload, prev_hash) != h:
-                return {"ok": False, "entries_checked": n, "broken_at_id": id_}
-            prev = h
+            if prev_hash != prev or not hmac.compare_digest(self._hash(ts, event, payload, prev_hash), h):
+                return {"ok": False, "entries_checked": n, "broken_at_id": id_,
+                        "detail": f"Entry {id_} was changed or removed after it was written."}
+            prev, last_id = h, id_
+        if head is None:
+            if n:
+                return {"ok": False, "entries_checked": n, "broken_at_id": None,
+                        "detail": "The signed head record is missing, so deleted recent entries cannot be ruled out."}
+            return {"ok": True, "entries_checked": 0}
+        if not hmac.compare_digest(head.get("mac", ""), self._head_mac(head["id"], head["hash"])):
+            return {"ok": False, "entries_checked": n, "broken_at_id": None, "detail": "The head record was forged."}
+        if last_id != head["id"] or prev != head["hash"]:
+            return {"ok": False, "entries_checked": n, "broken_at_id": head["id"],
+                    "detail": f"The log should end at entry {head['id']}; the most recent entries were deleted."}
         return {"ok": True, "entries_checked": n}
 
     def simulate_tamper(self) -> dict:

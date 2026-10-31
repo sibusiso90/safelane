@@ -226,34 +226,220 @@ def test_tamper_demo_covers_up_risky_request_and_restores(tmp_path):
     log.append("request", {"tier": "LOW"})
     t = log.simulate_tamper()
     assert t == {"ok": True, "id": 1, "field": "tier", "from": "HIGH", "to": "LOW"}
-    assert log.verify() == {"ok": False, "entries_checked": 1, "broken_at_id": 1}
+    v = log.verify()
+    assert (v["ok"], v["entries_checked"], v["broken_at_id"]) == (False, 1, 1)
     assert log.restore()["ok"] and log.verify()["ok"]
     assert not log.restore()["ok"]
 
 
+def test_audit_detects_deleted_recent_entries(tmp_path):
+    log = AuditLog(str(tmp_path / "a.db"))
+    for i in range(4):
+        log.append("request", {"tier": "LOW", "i": i})
+    con = sqlite3.connect(str(tmp_path / "a.db"))
+    con.execute("DELETE FROM audit WHERE id = 4")
+    con.commit()
+    v = log.verify()
+    assert not v["ok"] and "deleted" in v["detail"]
+    # a restart reads the signed head from disk, so the gap is still caught
+    assert not AuditLog(str(tmp_path / "a.db")).verify()["ok"]
+
+
+def test_audit_rewrite_and_rehash_without_key_is_caught(tmp_path):
+    path = str(tmp_path / "a.db")
+    log = AuditLog(path)
+    for i in range(3):
+        log.append("request", {"tier": "HIGH", "i": i})
+    # An insider rewrites entry 1 and recomputes the chain, but has no key: plain SHA-256.
+    import hashlib
+    import json
+    con = sqlite3.connect(path)
+    prev = "0" * 64
+    for id_, ts, ev, p in con.execute("SELECT id, ts, event, payload FROM audit ORDER BY id").fetchall():
+        if id_ == 1:
+            p = p.replace("HIGH", "LOW")
+        h = hashlib.sha256(json.dumps([ts, ev, p, prev]).encode()).hexdigest()
+        con.execute("UPDATE audit SET payload=?, prev_hash=?, hash=? WHERE id=?", (p, prev, h, id_))
+        prev = h
+    con.commit()
+    assert log.verify()["broken_at_id"] == 1
+
+
+def test_audit_missing_head_and_wrong_key(tmp_path):
+    path = str(tmp_path / "a.db")
+    AuditLog(path).append("request", {"tier": "LOW"})
+    assert not AuditLog(path, key="a-different-key").verify()["ok"]
+    os.remove(path + ".head")
+    v = AuditLog(path).verify()
+    assert not v["ok"] and "head" in v["detail"]
+
+
+def test_legacy_audit_log_is_set_aside(tmp_path):
+    path = str(tmp_path / "old.db")
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE audit (id INTEGER PRIMARY KEY, ts TEXT, event TEXT, payload TEXT, prev_hash TEXT, hash TEXT)")
+    con.execute("INSERT INTO audit VALUES (1, 't', 'request', '{}', 'x', 'y')")
+    con.commit()
+    log = AuditLog(path)
+    assert log.verify() == {"ok": True, "entries_checked": 0}
+    assert con.execute("SELECT count(*) FROM sqlite_master WHERE name LIKE 'audit_legacy_%'").fetchone()[0] == 1
+
+
+# ---------- accounts and roles ----------
+from safelane.accounts import Accounts, check_password, hash_password  # noqa: E402
+from safelane.service import Gateway, GatewayError  # noqa: E402
+
+ACCOUNTS = ROOT / "config" / "accounts.yaml"
+PW = "safelane-demo"
+
+
+def test_password_hashing():
+    h = hash_password("s3cret", iterations=1000)
+    assert check_password("s3cret", h) and not check_password("S3cret", h) and not check_password("x", "garbage")
+
+
+def test_fallback_pbkdf2_matches_the_standard_library():
+    import hashlib
+    from safelane.accounts import _pbkdf2_sha256
+    for pw in (b"pw", b"x" * 80):  # short key, and a key longer than the SHA-256 block
+        assert _pbkdf2_sha256(pw, b"salt", 1000) == hashlib.pbkdf2_hmac("sha256", pw, b"salt", 1000)
+
+
+def test_login_lockout_after_repeated_failures():
+    a = Accounts(ACCOUNTS)
+    for _ in range(5):
+        with pytest.raises(Exception) as e:
+            a.login("thandi", "wrong")
+        assert e.value.status == 401
+    with pytest.raises(Exception) as e:
+        a.login("thandi", PW)  # right password, but locked out
+    assert e.value.status == 429
+
+
+@pytest.fixture
+def gw(tmp_path, monkeypatch):
+    monkeypatch.delenv("SAFELANE_LLM_URL", raising=False)
+    g = Gateway(ROOT / "config" / "register.yaml", str(tmp_path / "g.db"), ACCOUNTS)
+    g.as_ = lambda user: g.session(g.login(user, PW)["token"])
+    return g
+
+
+def test_roles_limit_what_each_account_can_do(gw):
+    staff, reviewer, auditor, admin = (gw.as_(u) for u in ("thandi", "sipho", "zanele", "ayesha"))
+    assert gw.ask(staff, "local-assistant", "hello")["tier"] == "LOW"
+    for acct, fn in [(auditor, lambda a: gw.ask(a, "local-assistant", "hi")),
+                     (admin, lambda a: gw.ask(a, "local-assistant", "hi")),
+                     (staff, gw.audit_verify), (reviewer, gw.audit_entries), (auditor, gw.simulate_tamper)]:
+        with pytest.raises(GatewayError) as e:
+            fn(acct)
+        assert e.value.status == 403
+    assert gw.audit_verify(auditor)["ok"] and gw.simulate_tamper(admin)["ok"]
+
+
+def test_identity_comes_from_the_session(gw):
+    staff, sipho, pieter = gw.as_("thandi"), gw.as_("sipho"), gw.as_("pieter")
+    rid = gw.ask(sipho, "local-assistant", "Should we hire Thabo Mokoena or not?")["review_id"]
+    with pytest.raises(GatewayError) as e:
+        gw.decide(rid, sipho, "approve")
+    assert e.value.status == 403  # a reviewer cannot release their own request
+    with pytest.raises(GatewayError) as e:
+        gw.decide(rid, staff, "approve")
+    assert e.value.status == 403  # staff cannot review at all
+    assert gw.decide(rid, pieter, "approve")["status"] == "approved"
+    with pytest.raises(GatewayError):
+        gw.session("not-a-token")
+
+
+def test_only_the_requester_sees_restored_values(gw):
+    staff, sipho, zanele = gw.as_("thandi"), gw.as_("sipho"), gw.as_("zanele")
+    rid = gw.ask(staff, "local-assistant", "Should we hire Thabo Mokoena or not?")["review_id"]
+    released = gw.decide(rid, sipho, "approve")
+    assert "Thabo Mokoena" not in released["answer"] and "[NAME_1]" in released["answer"]
+    mine = gw.list_reviews(staff)[0]
+    assert "Thabo Mokoena" in mine["answer"] and mine["answer_restored"]
+    assert "Thabo Mokoena" not in gw.list_reviews(zanele)[0]["answer"]
+    other = gw.ask(gw.as_("pieter"), "local-assistant", "Should we dismiss the employee?")["review_id"]
+    assert other not in {r["id"] for r in gw.list_reviews(staff)}  # staff see only their own
+
+
+def test_model_failure_keeps_the_request_pending(gw, monkeypatch):
+    from safelane import llm
+    staff, sipho = gw.as_("thandi"), gw.as_("sipho")
+    rid = gw.ask(staff, "local-assistant", "Should we reject the candidate?")["review_id"]
+
+    def down(*_):
+        raise ConnectionError("model down")
+    monkeypatch.setattr(llm, "ask", down)
+    with pytest.raises(GatewayError) as e:
+        gw.decide(rid, sipho, "approve")
+    assert e.value.status == 502 and gw.reviews[rid]["status"] == "pending"
+    with pytest.raises(GatewayError) as e:
+        gw.ask(staff, "local-assistant", "hello")
+    assert e.value.status == 502
+    monkeypatch.undo()
+    assert gw.decide(rid, sipho, "approve")["status"] == "approved"  # retry works
+    assert gw.audit_verify(gw.as_("zanele"))["ok"]
+
+
 # ---------- API ----------
-def test_api_end_to_end(tmp_path, monkeypatch):
+def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("SAFELANE_AUDIT_DB", str(tmp_path / "api.db"))
     monkeypatch.delenv("SAFELANE_LLM_URL", raising=False)
     import importlib
     import safelane.main as m
     importlib.reload(m)
     from fastapi.testclient import TestClient
-    c = TestClient(m.app)
+    return TestClient(m.app)
 
-    r = c.post("/api/ask", json={"user": "thandi", "tool_id": "local-assistant",
-                                 "prompt": "Should we hire Sipho or not?"}).json()
+
+def _auth(c, user):
+    r = c.post("/api/login", json={"username": user, "password": PW})
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+def test_api_end_to_end(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    assert c.post("/api/ask", json={"tool_id": "local-assistant", "prompt": "hi"}).status_code == 401
+    assert c.post("/api/login", json={"username": "thandi", "password": "nope"}).status_code == 401
+    thandi, sipho, zanele = _auth(c, "thandi"), _auth(c, "sipho"), _auth(c, "zanele")
+    assert c.get("/api/me", headers=thandi).json()["role"] == "staff"
+
+    r = c.post("/api/ask", headers=thandi, json={"tool_id": "local-assistant",
+                                                 "prompt": "Should we hire Sipho or not?"}).json()
     assert r["tier"] == "HIGH"
     rid = r["review_id"]
-    assert c.post(f"/api/reviews/{rid}", json={"reviewer": "thandi", "action": "approve"}).status_code == 403
-    ok = c.post(f"/api/reviews/{rid}", json={"reviewer": "sipho", "action": "approve"}).json()
+    assert c.post(f"/api/reviews/{rid}", headers=thandi, json={"action": "approve"}).status_code == 403
+    ok = c.post(f"/api/reviews/{rid}", headers=sipho, json={"action": "approve"}).json()
     assert ok["status"] == "approved" and any("Draft only" in w for w in ok["output_warnings"])
 
-    r = c.post("/api/ask", json={"user": "thandi", "tool_id": "enterprise-cloud-llm",
-                                 "prompt": "Write to lerato@mail.example"}).json()
+    r = c.post("/api/ask", headers=thandi, json={"tool_id": "enterprise-cloud-llm",
+                                                 "prompt": "Write to lerato@mail.example"}).json()
     assert r["tier"] == "MEDIUM" and "lerato@mail.example" in r["answer"]  # rehydrated for the user
     assert "lerato@mail.example" not in r["sent_to_model"]                 # never sent to the model
 
-    log = c.get("/api/audit").json()
+    assert c.get("/api/audit", headers=thandi).status_code == 403
+    log = c.get("/api/audit", headers=zanele).json()
     assert all("lerato@mail.example" not in str(e) for e in log)            # audit holds no raw PII
-    assert c.get("/api/audit/verify").json()["ok"]
+    assert {"login", "login_failed", "request", "review", "response"} <= {e["event"] for e in log}
+    assert c.get("/api/audit/verify", headers=zanele).json()["ok"]
+    c.post("/api/logout", headers=thandi)
+    assert c.get("/api/me", headers=thandi).status_code == 401
+
+
+@pytest.mark.parametrize("path,body", [
+    ("/api/ask", {"tool_id": "local-assistant", "prompt": "hi", "data_class": "top-secret"}),
+    ("/api/ask", {"tool_id": "x" * 101, "prompt": "hi"}),
+    ("/api/reviews/abc", {"action": "maybe"}),
+])
+def test_api_rejects_bad_input(tmp_path, monkeypatch, path, body):
+    c = _client(tmp_path, monkeypatch)
+    hdr = _auth(c, "sipho")
+    assert c.post(path, headers=hdr, json=body).status_code == 422
+
+
+def test_api_audit_limit_is_bounded(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    hdr = _auth(c, "zanele")
+    assert c.get("/api/audit?limit=-1", headers=hdr).status_code == 422
+    assert c.get("/api/audit?limit=501", headers=hdr).status_code == 422

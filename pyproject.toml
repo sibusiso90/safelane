@@ -1,0 +1,12 @@
+[project]
+name = "safelane"
+version = "0.2.0"
+description = "AI gateway: tools register, redaction, risk-tiered human review and a tamper-evident audit log"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# Exact pins for running the app live in requirements.txt.
+dependencies = ["fastapi", "uvicorn", "pydantic", "pyyaml", "httpx2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
