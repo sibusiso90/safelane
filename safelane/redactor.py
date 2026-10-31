@@ -3,7 +3,8 @@
 Design choices:
 - Deterministic, rule-based detectors (regex + checksums + context). They are
   explainable, testable and run offline. An ML/NER detector can be added behind the
-  same interface later; free-text person names are a known gap.
+  same interface later. Names with nothing around them that marks a person
+  ("tell sibongile") are still a known gap.
 - Every detection is replaced by a typed placeholder ([EMAIL_1]) and the mapping is
   kept in memory for the request only, so the answer can be "rehydrated" for the
   user without the external model ever seeing the real values.
@@ -13,6 +14,11 @@ v2 changes (after the adversarial test, see eval/README.md):
   JWTs, bearer tokens, "password is X", bank-name account numbers, codename aliases,
   context suppression for reference/serial/order numbers, test-card allow-list,
   and a minimum-strength check so "token: placeholder" is not treated as a secret.
+
+v3 changes (scored on eval/heldout_v3.jsonl, which was written and committed first):
+  person names from titles, greetings, sign-offs, addressing words, initials and
+  "Firstname Surname from/said ..." patterns; "pass:" labels; and unlabelled
+  "user / password" pairs when the password is long and mixes character classes.
 """
 from __future__ import annotations
 
@@ -65,6 +71,71 @@ def strong_secret(raw: str) -> bool:
     return len(v) >= 6 and bool(re.search(r"[\d\W_]", v)) and v.lower() not in {"placeholder", "redacted", "xxxxxx", "changeme"}
 
 
+def complex_secret(raw: str) -> bool:
+    """For a password with no label: at least 8 characters and 3 of the 4 character classes."""
+    v = raw.rstrip(".")
+    classes = sum(bool(re.search(p, v)) for p in (r"[a-z]", r"[A-Z]", r"\d", r"[^\w]"))
+    return len(v) >= 8 and classes >= 3
+
+
+# --- Person names (v3) ---
+# No list of first names: names are found from the way people are written about. A
+# title ("Ms Fourie"), a greeting or sign-off ("Dear ...", "Regards, ..."), a word that
+# addresses someone ("tell", "for", "technician"), an initial ("J. Smith"), or two
+# capitalised words followed by something a person does ("... from procurement asked").
+_CAP = r"[A-Z][a-z]+(?:[\-'][A-Z][a-z]+)?"
+_PARTICLE = r"(?:van der|van den|van|von|de la|de|du|le|da|dos)"
+_NAME = rf"(?:{_PARTICLE}\s+)?{_CAP}(?:\s+(?:{_PARTICLE}\s+)?{_CAP}){{0,2}}"
+TITLES = r"(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Adv|Sir|Madam|Mnr|Mev)"
+NAME_CUES = (
+    r"(?:Dear|Hi|Hello|Hey|Sawubona|Dumela|Molo|Regards,?|Thanks,?|Thank you,?|Sincerely,?|Attn:?|Cc:?|"
+    r"I,|I am|I'm|my name is|named|called|to|for|from|with|by|tell|ask|call|phone|email|e-mail|e-mailed|emailed|"
+    r"remind|contact|thank|congratulate|invite|promote|hire|dismiss|"
+    r"colleague|manager|supervisor|technician|engineer|employee|candidate|applicant|customer|client|intern|"
+    r"attendees? (?:were|was|are|is)|met with|spoke to|signed by|approved by)"
+)
+_TITLE_RE = re.compile(rf"\b{TITLES}\.?\s+({_NAME})")
+_CUE_RE = re.compile(rf"(?:(?<=\s)|^|(?<=[\"'(]))(?i:{NAME_CUES}),?\s+({_NAME})")
+_INITIAL_RE = re.compile(r"(?<![\w.])([A-Z]\.\s?(?:[A-Z]\.\s?)?" + _CAP + r")")
+_PAIR_RE = re.compile(rf"\b({_CAP}\s+(?:{_PARTICLE}\s+)?{_CAP})(?=\s+(?:from|at|in|of|said|says|asked|asks|wants|will|has|is|was|"
+                      r"joined|reported|called|e-?mailed)\b|,|'s\b)")
+# Capitalised words that start a sentence, name a time, or belong to places and organisations.
+NOT_NAMES = {
+    "The", "A", "An", "This", "That", "These", "Those", "Our", "My", "Your", "His", "Her", "Their", "Its", "All", "Every",
+    "Each", "Some", "Any", "No", "Please", "Can", "Could", "Would", "Will", "Should", "Write", "Draft", "Summarise",
+    "Summarize", "Explain", "Make", "Create", "Translate", "Rewrite", "Rephrase", "Check", "Use", "Send", "Forward",
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
+    "Project", "Team", "Department", "Board", "Exco", "Acme", "Customer", "Care", "Support", "Sales", "Finance",
+    "Procurement", "Operations", "Head", "Office", "Depot", "Region", "Committee", "Act", "Policy", "Microsoft", "Google",
+    "Teams", "Meet", "Zoom", "Outlook", "Excel", "Word", "Eskom", "Municipality", "Council", "Bank", "Street", "Road",
+    "Drive", "Avenue", "Station", "Substation", "Health", "Safety", "South", "Africa", "African", "Gauteng", "Limpopo",
+    "Mpumalanga", "Natal", "Cape", "Free", "State", "North", "West", "East", "Northern", "Eastern", "Western", "Southern",
+    "Johannesburg", "Pretoria", "Tshwane", "Durban", "Ethekwini", "Town", "Gqeberha", "Port", "Elizabeth", "London",
+    "Bloemfontein", "Polokwane", "Mbombela", "Nelspruit", "Kimberley", "Mahikeng", "Pietermaritzburg", "Soweto",
+    "Mthatha", "Rustenburg", "George", "Sandton", "Centurion", "Midrand", "AI", "IT", "HR",
+    "Mr", "Mrs", "Ms", "Miss", "Mx", "Dr", "Prof", "Adv", "Sir", "Madam", "Mnr", "Mev",
+}
+# A capitalised name followed by one of these is a place or organisation ("Mandela Drive").
+PLACE_NEXT = re.compile(r"\s+(?:Drive|Street|St|Road|Rd|Avenue|Ave|Square|Park|Hospital|School|University|College|"
+                        r"Bank|Holdings|Group|Ltd|Inc|Act|Committee|Municipality|Depot|depot|office|branch|region|station|plant)\b")
+
+
+def _trim_name(text: str, s: int, e: int) -> tuple[int, int] | None:
+    """Drop non-name words from either end of a candidate; None if nothing name-like is left."""
+    words = [(m.start() + s, m.end() + s) for m in re.finditer(r"\S+", text[s:e])]
+    while words and text[words[0][0]:words[0][1]] in NOT_NAMES:
+        words.pop(0)
+    while words and text[words[-1][0]:words[-1][1]] in NOT_NAMES:
+        words.pop()
+    if not words or any(text[a:b] in NOT_NAMES for a, b in words):
+        return None
+    s, e = words[0][0], words[-1][1]
+    if PLACE_NEXT.match(text, e):
+        return None
+    return s, e
+
+
 # Words that, just before a number, mean it is a business reference - not personal data.
 REFERENCE_CONTEXT = re.compile(
     r"(?i)\b(?:ref(?:erence)?|order|invoice|inv|ticket|case|serial|meter|po|purchase order|tracking|tender|policy no|job)\b[\s#:.\-]*(?:no\.?|number|#)?[\s#:.\-]*$"
@@ -78,6 +149,9 @@ _DETECTORS: list[tuple[str, re.Pattern, Callable[[str], bool] | None, bool]] = [
     ("SECRET", re.compile(r"\beyJ[A-Za-z0-9_\-]{5,}\.eyJ[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]{5,}"), None, False),  # JWT
     ("SECRET", re.compile(r"(?i)\bBearer\s+([A-Za-z0-9_\-\.=]{16,})"), None, False),
     ("SECRET", re.compile(r"(?i)\b(?:password|passwd|pwd|passcode|api[_ ]?key|access[_ ]?key|token|secret)\s*(?:[:=]|\bis\b)\s*([^\s;,'\"]{4,})"), strong_secret, False),
+    ("SECRET", re.compile(r"(?i)\bpass\s*[:=]\s*([^\s;,'\"]{4,})"), strong_secret, False),
+    # v3: unlabelled "user / password" or "user:password" pairs, kept only if the password looks real
+    ("SECRET", re.compile(r"(?i)\b(?!https?\b|ftp\b)[a-z][\w.\-]{1,30}\s*[/:]\s*(?!/)([^\s;,'\"]{8,})"), complex_secret, False),
     ("EMAIL", re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"), None, False),
     ("EMAIL", re.compile(r"(?i)\b[a-z0-9._%+\-]+(?:\s+dot\s+[a-z0-9_\-]+)*\s*(?:\[at\]|\(at\)|\s+at\s+)\s*[a-z0-9\-]+"
                          r"(?:\s*(?:\[dot\]|\(dot\)|\s+dot\s+|\.)\s*[a-z0-9\-]+)*\s*(?:\[dot\]|\(dot\)|\s+dot\s+|\.)\s*[a-z]{2,}\b"), None, False),
@@ -161,6 +235,11 @@ class Redactor:
                 for m in rx.finditer(text):
                     if free(m.start(), m.end()):
                         add("INTERNAL_TERM", m.start(), m.end())
+        for rx in (_TITLE_RE, _CUE_RE, _INITIAL_RE, _PAIR_RE):
+            for m in rx.finditer(text):
+                span = _trim_name(text, m.start(1), m.end(1))
+                if span and free(*span):
+                    add("NAME", *span)
         return sorted(found, key=lambda d: d.start)
 
     def redact(self, text: str) -> RedactionResult:

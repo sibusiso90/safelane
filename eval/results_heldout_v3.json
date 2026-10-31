@@ -1,0 +1,67 @@
+{
+  "prompts": 30,
+  "detection": {
+    "EMAIL": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "NAME": {
+      "tp": 15,
+      "fp": 0,
+      "fn": 1,
+      "precision": 1.0,
+      "recall": 0.9375
+    },
+    "PHONE": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "SECRET": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "detection_overall": {
+    "precision": 1.0,
+    "recall": 0.9545454545454546
+  },
+  "decision_accuracy": 0.9666666666666667,
+  "confusion": {
+    "LOW": {
+      "LOW": 10
+    },
+    "MEDIUM": {
+      "MEDIUM": 14,
+      "LOW": 1
+    },
+    "HIGH": {
+      "HIGH": 2
+    },
+    "BLOCKED": {
+      "BLOCKED": 3
+    }
+  },
+  "leakage": {
+    "sensitive_values_bound_for_external_models": 20,
+    "baseline_leaked": 20,
+    "gateway_leaked": 1
+  },
+  "errors": [
+    {
+      "category": "name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Make this sound more professional: tell sibongile the site visit moved to thursday"
+    }
+  ]
+}

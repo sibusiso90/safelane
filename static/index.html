@@ -568,7 +568,7 @@ async function tourApprove(reviewer){
 }
 async function tourAudit(){ show("audit"); await loadAudit(); }
 const TOUR = [
-  ["Personal data is redacted", "E-mail, phone and account number become placeholders. The model never sees them; the answer is restored for the user.", () => scenario("Personal info")],
+  ["Personal data is redacted", "The name, e-mail, phone and account number become placeholders. The model never sees them; the answer is restored for the user.", () => scenario("Personal info")],
   ["Secrets never leave", "An API key bound for a cloud model is blocked outright, and the user is told to rotate it.", () => scenario("API key")],
   ["Unapproved tools are denied", "A PDF plugin wraps an unknown model. It is not on the register, so the request stops and an approved tool is suggested.", () => scenario("Wrapper plugin")],
   ["People decisions go to a person", "A hiring question is held for human review instead of being answered by the model.", () => scenario("Hiring decision")],

@@ -28,6 +28,7 @@ KIND_TO_CLASS = {
     "SA_ID": "personal",
     "BANK_ACCOUNT": "personal",
     "CARD": "personal",
+    "NAME": "personal",
     "INTERNAL_TERM": "confidential",
     "SECRET": "secret",
 }

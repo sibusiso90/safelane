@@ -51,6 +51,29 @@ def tier(prompt, tool="enterprise-cloud-llm"):
     return ENG.evaluate(prompt, tool).tier
 
 
+@pytest.mark.parametrize("text,names", [
+    ("Hi Peter, please ask Nandi Dube from HR to call me.", ["Peter", "Nandi Dube"]),
+    ("Regards, Ms. Lindiwe du Plessis", ["Lindiwe du Plessis"]),
+    ("Summarise Kagiso van Wyk's warnings.", ["Kagiso van Wyk"]),
+    ("We met with the Pretoria team on Monday.", []),
+    ("Send it to Durban by Friday.", []),
+    ("Write a note for The Board about Q3.", []),
+])
+def test_person_names(text, names):
+    assert [d.value for d in Redactor().detect(text) if d.kind == "NAME"] == names
+
+
+@pytest.mark.parametrize("text,secret", [
+    ("login svc_backup / Wint3r!Gate here", "Wint3r!Gate"),
+    ("user: jdoe pass: Autumn$99", "Autumn$99"),
+    ("Why is admin/admin a weak default?", None),
+    ("See https://Acme2.example/Path1 for details", None),
+])
+def test_unlabelled_credentials(text, secret):
+    found = [d.value for d in Redactor().detect(text) if d.kind == "SECRET"]
+    assert found == ([secret] if secret else [])
+
+
 def test_unlisted_tool_default_deny():
     d = ENG.evaluate("hello", "brand-new-ai-app")
     assert d.tier == "BLOCKED" and d.rule == "R1_REGISTER" and d.alternatives

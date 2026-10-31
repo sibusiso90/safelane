@@ -8,7 +8,7 @@
 SafeLane sits between staff and AI tools. Each prompt passes through it on the way out, and it does four things:
 
 1. **Checks the AI Tools Register.** Approved, restricted, not approved or prohibited. Anything unlisted is blocked by default, and the user is pointed to an approved alternative.
-2. **Redacts sensitive data before it leaves.** SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. The model never sees the real values; the gateway swaps them back into the answer for the user.
+2. **Redacts sensitive data before it leaves.** Names, SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. The model never sees the real values; the gateway swaps them back into the answer for the user.
 3. **Sorts each request by risk.** `LOW` → send. `MEDIUM` → send redacted. `HIGH` (e.g. *"should we hire her?"*) → hold for a human reviewer. `BLOCKED` (secrets, injection attempts, unapproved tools) → refuse and explain.
 4. **Logs everything in a tamper-evident audit trail.** A SHA-256 hash chain means any edited or deleted entry is detected. The log stores the *redacted* prompt, so the audit trail does not become a new leak.
 
@@ -66,7 +66,7 @@ flowchart LR
 | `static/pyodide-api.js` | In-browser backend for the online demo: runs the same `safelane` package via Pyodide |
 | `config/register.yaml` | Example AI Tools Register + sensitive internal terms |
 | `eval/` | Synthetic test sets, evaluation script, results |
-| `tests/` | 17 automated tests |
+| `tests/` | 27 automated tests |
 
 ### Policy rules (evaluated in order; the first match wins)
 
@@ -108,23 +108,25 @@ export SAFELANE_LLM_MODEL=qwen3:4b-instruct
 
 **Tests and evaluation**
 ```bash
-pytest -q                                   # 17 tests
-python eval/run_eval.py eval/heldout.jsonl  # also: prompts.jsonl, adversarial.jsonl
+pytest -q                                   # 27 tests
+python eval/run_eval.py eval/heldout_v3.jsonl  # also: heldout, prompts, adversarial
 ```
 
 ## Results (synthetic data; see `eval/README.md` for method and caveats)
 
-| Test set | Detection precision / recall | Decision accuracy | Sensitive values reaching an external model |
-|---|---|---|---|
-| Held-out, v1 | 80.0% / 40.0% | 45.0% | 5 of 10 |
-| **Held-out, v2** | **88.9% / 80.0%** | **95.0%** | **1 of 10** |
-| Policy-only baseline | n/a | n/a | 10 of 10 |
+| Test set | Version | Detection precision / recall | Decision accuracy | Sensitive values reaching an external model |
+|---|---|---|---|---|
+| Held-out 1 (20 prompts) | v1 | 80.0% / 40.0% | 45.0% | 5 of 10 |
+| **Held-out 1** | **v2** | **88.9% / 80.0%** | **95.0%** | **1 of 10** |
+| Held-out 2 (30 prompts, names + credentials) | v2 | 100% / 13.6% | 50.0% | 17 of 20 |
+| **Held-out 2** | **v3** | **100% / 95.5%** | **96.7%** | **1 of 20** |
+| Policy-only baseline | n/a | n/a | n/a | every value |
 
-v1 was tested against a hand-written adversarial set, failed in specific ways, and was improved. It was then scored once on a held-out set that was written before the improvements. The remaining held-out miss (a bare `admin / P@ssw0rd` pair) is reported, not patched.
+Each version was scored once on a test set written before it. v1 failed a hand-written adversarial set and was improved into v2, which was then scored on held-out set 1. Its one miss (a bare `admin / P@ssw0rd` pair) and the missing name detection were reported, not patched. For v3, held-out set 2 was written, committed and scored against v2 **before** any v3 code existed (commit `b4734cf`). v3 adds person names and unlabelled credential pairs, and was then scored on set 2 once. Its one miss is a lowercase name (`tell sibongile …`).
 
 ## Known limitations
 
-- **Rule-based detection.** It's explainable and fast, but it misses free-text **names** and unlabelled credentials. Next step: an on-prem NER model behind the same interface.
+- **Rule-based detection.** It's explainable and fast. It finds names from the words around them (titles, greetings, "tell …", "… from procurement"), so it misses a name written with no such cue or in lower case, and it also redacts company or famous names that look like people ("Grant Thornton from audit"). Next step: an on-prem NER model behind the same interface.
 - **Small, self-written test sets.** Needs independent red-teaming and a consented sample of real prompts.
 - **Users can't currently bypass the gateway from inside it, but they can open a browser.** The gateway only works if network controls (proxy/CASB rules) also block unapproved AI sites. That is a deployment dependency, not code.
 - **Review queue is in memory** (by design, so real values never touch disk), so pending reviews are lost on restart. Production would use an encrypted store with expiry.

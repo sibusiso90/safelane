@@ -37,18 +37,18 @@
       "recall": 1.0
     },
     "SECRET": {
-      "tp": 2,
+      "tp": 3,
       "fp": 0,
-      "fn": 1,
+      "fn": 0,
       "precision": 1.0,
-      "recall": 0.6666666666666666
+      "recall": 1.0
     }
   },
   "detection_overall": {
-    "precision": 0.8888888888888888,
-    "recall": 0.8
+    "precision": 0.9,
+    "recall": 0.9
   },
-  "decision_accuracy": 0.95,
+  "decision_accuracy": 1.0,
   "confusion": {
     "LOW": {
       "LOW": 5
@@ -60,23 +60,13 @@
       "HIGH": 3
     },
     "BLOCKED": {
-      "BLOCKED": 4,
-      "LOW": 1
+      "BLOCKED": 5
     }
   },
   "leakage": {
     "sensitive_values_bound_for_external_models": 10,
     "baseline_leaked": 10,
-    "gateway_leaked": 1
+    "gateway_leaked": 0
   },
-  "names_missed": 0,
-  "errors": [
-    {
-      "category": "secret",
-      "expected": "BLOCKED",
-      "got": "LOW",
-      "rule": "R8_CLEAN",
-      "prompt": "Login for the SCADA historian is admin / P@ssw0rd2026, write the handover note."
-    }
-  ]
+  "errors": []
 }

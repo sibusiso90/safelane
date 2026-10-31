@@ -29,12 +29,12 @@
       "precision": 1.0,
       "recall": 1.0
     },
-    "NAME (not in scope)": {
-      "tp": 0,
+    "NAME": {
+      "tp": 55,
       "fp": 0,
-      "fn": 70,
-      "precision": null,
-      "recall": 0.0
+      "fn": 15,
+      "precision": 1.0,
+      "recall": 0.7857142857142857
     },
     "PHONE": {
       "tp": 25,
@@ -60,7 +60,7 @@
   },
   "detection_overall": {
     "precision": 1.0,
-    "recall": 1.0
+    "recall": 0.9285714285714286
   },
   "decision_accuracy": 1.0,
   "confusion": {
@@ -78,10 +78,9 @@
     }
   },
   "leakage": {
-    "sensitive_values_bound_for_external_models": 140,
-    "baseline_leaked": 140,
+    "sensitive_values_bound_for_external_models": 195,
+    "baseline_leaked": 195,
     "gateway_leaked": 0
   },
-  "names_missed": 70,
   "errors": []
 }

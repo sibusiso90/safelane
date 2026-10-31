@@ -6,11 +6,12 @@
 | CARD | 2 | 0 | 0 | 100.0% | 100.0% |
 | EMAIL | 4 | 0 | 0 | 100.0% | 100.0% |
 | INTERNAL_TERM | 3 | 1 | 1 | 75.0% | 75.0% |
+| NAME | 0 | 1 | 0 | 0.0% | n/a |
 | PHONE | 5 | 0 | 0 | 100.0% | 100.0% |
 | SA_ID | 3 | 0 | 0 | 100.0% | 100.0% |
-| SECRET | 5 | 0 | 0 | 100.0% | 100.0% |
+| SECRET | 5 | 1 | 0 | 83.3% | 100.0% |
 
-**Overall detection (in-scope types):** precision 96.0%, recall 96.0%
+**Overall detection:** precision 88.9%, recall 96.0%
 **Decision accuracy:** 100.0% (40/40)
 
 | Expected \ Got | LOW | MEDIUM | HIGH | BLOCKED |
