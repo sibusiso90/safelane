@@ -127,7 +127,7 @@ def client_key(client: str) -> str:
         v4 = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None)
         if v4:
             return str(v4)
-        if ip.is_global:
+        if not ip.is_loopback:
             return str(ipaddress.ip_network(f"{ip}/64", strict=False))
     return str(ip)
 
@@ -175,7 +175,7 @@ class Accounts:
         with self._lock:
             self._known[(key, client)] = now
             self._failures.pop((key, client), None)
-            for b in (("*", client), (key, "*")):
+            for b, _ in buckets[1:]:  # undo only the counts this attempt added
                 if self._failures.get(b):
                     self._failures[b].pop()  # this attempt was not a failure
             self._sessions = {t: s for t, s in self._sessions.items() if s[1] > now}  # drop expired
