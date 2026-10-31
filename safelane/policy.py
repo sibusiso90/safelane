@@ -17,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from .redactor import Redactor, RedactionResult, hidden_in_words, normalise
+from .redactor import Redactor, RedactionResult, has_hidden, hidden_in_words, normalise
 
 CLASS_ORDER = ["public", "internal", "personal", "confidential", "secret"]
 
@@ -141,18 +141,18 @@ class PolicyEngine:
         red = self.redactor.redact(prompt)
         # v4: check the raw prompt and cleaned copies with hidden characters dropped or read as
         # spaces, so one can neither split "ignore" nor glue it to the next word unnoticed.
-        views = (prompt, normalise(prompt)[0], normalise(prompt, hidden=" ")[0])
-        # Hidden characters inside words can split and glue at once ("dis|regard|all"). Only for
-        # such prompts, also match without word boundaries: more false positives, but on text
-        # that already looks like an evasion attempt.
-        evasive = hidden_in_words(prompt)
+        views = (prompt, normalise(prompt)[0], re.sub(r"\s+", " ", normalise(prompt, hidden=" ")[0]))
+        # Hidden characters can split and glue at once ("dis|regard|all"). Only for prompts that
+        # contain any, also match without word boundaries: more false positives, but on text
+        # that already carries characters normal writing rarely has.
+        evasive = has_hidden(prompt)
         original_class = _max_class([declared_class] + [KIND_TO_CLASS[k] for k in red.kinds])
         # After redaction, the detected values are gone; what remains is the user's declared class.
         residual_class = declared_class
         flags: list[str] = []
         if tool.get("hosting") == "offshore" and "personal" in {KIND_TO_CLASS[k] for k in red.kinds}:
             flags.append("POPIA s72: personal information would cross the border - redaction enforced")
-        if evasive:
+        if hidden_in_words(prompt):
             flags.append("Hidden characters inside words: removed before checking (possible evasion attempt)")
         if "PROJECT" in red.kinds:
             flags.append("Project name not on the register: redacted as possibly confidential. "

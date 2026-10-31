@@ -233,10 +233,22 @@ def normalise(text: str, spoken: bool = True, hidden: str = "") -> tuple[str, li
     return "".join(out), out_spans
 
 
+def has_hidden(text: str) -> bool:
+    return any(unicodedata.category(ch) == "Cf" for ch in text)
+
+
 def hidden_in_words(text: str) -> bool:
-    """A hidden character between two letters or digits: rare in normal writing, common in evasion."""
-    return any(unicodedata.category(ch) == "Cf" and 0 < i < len(text) - 1
-               and text[i - 1].isalnum() and text[i + 1].isalnum() for i, ch in enumerate(text))
+    """Hidden characters (one or a run of them) between two letters or digits: rare in normal
+    writing, common in evasion."""
+    prev, in_run = "", False
+    for ch in text:
+        if unicodedata.category(ch) == "Cf":
+            in_run = True
+            continue
+        if in_run and prev.isalnum() and ch.isalnum():
+            return True
+        prev, in_run = ch, False
+    return False
 
 
 # When detections from different views overlap, the merged span keeps the first of these kinds.
