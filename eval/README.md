@@ -41,6 +41,9 @@ Person names, found from the words around them rather than from a list of first 
 
 The held-out 2 miss is `tell sibongile …`: a name in lower case. Catching it needs a name list or an NER model, and a hand-made name list would have been written by someone who had already seen the test set.
 
+## Found by manual testing after v3 (v3.1)
+*"can we fire the person based on the notes"* was sent straight to an approved model as LOW: the high-impact rule (R4) only knew phrasings like *"should we …"*. v3.1 also treats *can / could / may / must / do we* followed directly by a decision verb (*fire, dismiss, reject, approve, let … go, hire* a person) as high impact, without catching everyday questions like *"can we summarise the staff newsletter?"* or *"can we fire up the generator?"*. This came from hands-on testing, not from a blind test set, so no held-out number is claimed for it. Every set scores the same as before, and the cases are now unit tests.
+
 ## Honest limits
 - **v2 held-out miss, fixed in v3:** `admin / P@ssw0rd2026`, a username/password pair with no "password" label. It was deliberately not patched before v2 was reported. v3's credential-pair rule catches it, and its effect was measured on held-out 2, not on the set that exposed it.
 - **Names are found from context only.** A name with no cue, in lower case, or in a bare list (*Sipho, Thandi and Mike will attend*) is missed, and company or famous names that look like people (*Grant Thornton from audit*) are redacted when they need not be. 15 of the 70 names in the templated set are still missed. The next step is an on-prem NER model (e.g. a small multilingual model) behind the same interface.

@@ -37,23 +37,32 @@ KIND_TO_CLASS = {
 # v2: a decision cue AND a person/money object must both appear, so "how should we hire
 # better graduates?" (a general question) is not held, but "should we hire Sipho?" is.
 # A few isiZulu / Afrikaans cues are included because staff do not only write in English.
+# v3.1: "can / may / must / do we ..." and "is it fair to ..." also count as cues; found by
+# manual testing ("can we fire the person based on the notes") after v3 was scored.
 STRONG_IMPACT = re.compile(
     r"(?i)\b(disciplinary (?:hearing|action)|performance rating|retrench\w*|dismiss\w*|terminate\w*|"
     r"credit (?:decision|score)|medical (?:advice|diagnosis)|legal opinion)\b"
 )
 DECISION_CUE = re.compile(
-    r"(?i)((?<!how )\bshould (?:we|i)\b|\bwho (?:should|gets)\b|\bwhich\b.{0,40}\bshould\b|\bdecide (?:whether|if)\b|"
+    r"(?i)((?<!how )\bshould (?:we|i)\b|\bis it (?:ok|okay|fair|right|legal|wise) to\b|\bwho (?:should|gets)\b|\bwhich\b.{0,40}\bshould\b|\bdecide (?:whether|if)\b|"
     r"\bdecide\b|\byes or no\b|\bor not\b|\brank\b|\bshortlist\b|\brecommend whether\b|\btell me who\b|"
     r"\bnoma cha\b|\bkufanele\b|\bof nie\b|\bmoet ons\b)"
 )
 DECISION_OBJECT = re.compile(
-    r"(?i)\b(applicants?|candidates?|cvs?|employees?|staff|contract|job offer|role|hire|hiring|fire|promot\w*|"
+    r"(?i)\b(applicants?|candidates?|cvs?|employees?|staff|contract|job offer|role|hire|hiring|fire(?! up)|promot\w*|"
     r"loan|claim|credit|payment|pay out|reject|drop|qash\w*|siqashe|xosh\w*|aanstel\w*|afdank\w*)\b"
 )
 
 
+# "can we" alone is everyday phrasing, so it only counts when a decision verb follows it.
+DIRECT_DECISION = re.compile(
+    r"(?i)(?<!how )\b(?:can|could|may|must|do|shall) (?:we|i) (?:just |still )?"
+    r"(?:fire(?! up)|dismiss|suspend|demote|promote|reject|approve|deny|decline|drop|let \w+ go|pay out|hire(?! an?\b))\b"
+)
+
+
 def high_impact(prompt: str) -> bool:
-    if STRONG_IMPACT.search(prompt):
+    if STRONG_IMPACT.search(prompt) or DIRECT_DECISION.search(prompt):
         return True
     return bool(DECISION_CUE.search(prompt) and DECISION_OBJECT.search(prompt))
 

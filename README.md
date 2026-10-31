@@ -66,7 +66,7 @@ flowchart LR
 | `static/pyodide-api.js` | In-browser backend for the online demo: runs the same `safelane` package via Pyodide |
 | `config/register.yaml` | Example AI Tools Register + sensitive internal terms |
 | `eval/` | Synthetic test sets, evaluation script, results |
-| `tests/` | 27 automated tests |
+| `tests/` | 33 automated tests |
 
 ### Policy rules (evaluated in order; the first match wins)
 
@@ -108,7 +108,7 @@ export SAFELANE_LLM_MODEL=qwen3:4b-instruct
 
 **Tests and evaluation**
 ```bash
-pytest -q                                   # 27 tests
+pytest -q                                   # 33 tests
 python eval/run_eval.py eval/heldout_v3.jsonl  # also: heldout, prompts, adversarial
 ```
 
