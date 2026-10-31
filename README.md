@@ -8,7 +8,7 @@
 SafeLane sits between staff and AI tools. Each prompt passes through it on the way out, and it does four things:
 
 1. **Checks the AI Tools Register.** Approved, restricted, not approved or prohibited. Anything unlisted is blocked by default, and the user is pointed to an approved alternative.
-2. **Redacts sensitive data before it leaves.** Names, SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. The model never sees the real values; the gateway swaps them back into the answer for the user.
+2. **Redacts sensitive data before it leaves.** Names, SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. A *Project …* name that is not on the register is redacted too, and the user is asked to confirm it is public. The model never sees the real values; the gateway swaps them back into the answer for the user.
 3. **Sorts each request by risk.** `LOW` → send. `MEDIUM` → send redacted. `HIGH` (e.g. *"should we hire her?"*) → hold for a human reviewer. `BLOCKED` (secrets, injection attempts, unapproved tools) → refuse and explain.
 4. **Logs everything in a tamper-evident audit trail.** A SHA-256 hash chain means any edited or deleted entry is detected. The log stores the *redacted* prompt, so the audit trail does not become a new leak.
 
@@ -66,7 +66,7 @@ flowchart LR
 | `static/pyodide-api.js` | In-browser backend for the online demo: runs the same `safelane` package via Pyodide |
 | `config/register.yaml` | Example AI Tools Register + sensitive internal terms |
 | `eval/` | Synthetic test sets, evaluation script, results |
-| `tests/` | 33 automated tests |
+| `tests/` | 37 automated tests |
 
 ### Policy rules (evaluated in order; the first match wins)
 
@@ -108,7 +108,7 @@ export SAFELANE_LLM_MODEL=qwen3:4b-instruct
 
 **Tests and evaluation**
 ```bash
-pytest -q                                   # 33 tests
+pytest -q                                   # 37 tests
 python eval/run_eval.py eval/heldout_v3.jsonl  # also: heldout, prompts, adversarial
 ```
 

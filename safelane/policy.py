@@ -30,6 +30,7 @@ KIND_TO_CLASS = {
     "CARD": "personal",
     "NAME": "personal",
     "INTERNAL_TERM": "confidential",
+    "PROJECT": "confidential",  # a "Project X" that is not on the register
     "SECRET": "secret",
 }
 
@@ -136,6 +137,9 @@ class PolicyEngine:
         flags: list[str] = []
         if tool.get("hosting") == "offshore" and "personal" in {KIND_TO_CLASS[k] for k in red.kinds}:
             flags.append("POPIA s72: personal information would cross the border - redaction enforced")
+        if "PROJECT" in red.kinds:
+            flags.append("Project name not on the register: redacted as possibly confidential. "
+                         "Confirm it is public, or ask for it to be registered.")
 
         def d(tier, rule, reason, alts=None):
             return Decision(tier, rule, reason, tool_id, original_class, red, alts or [], flags)

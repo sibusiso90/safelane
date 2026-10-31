@@ -136,6 +136,27 @@ def _trim_name(text: str, s: int, e: int) -> tuple[int, int] | None:
     return s, e
 
 
+# --- Unregistered project names (v3.1) ---
+# "Project SK" or "Project Blue Sky" that is not on the register may still be a codename,
+# so it is redacted and the user is asked to confirm it is public. Ordinary phrases
+# ("project manager", "Project Plan") are not names.
+PROJECT_WORDS = {"manager", "management", "managers", "plan", "plans", "planning", "team", "teams", "lead", "leader",
+                 "office", "status", "update", "updates", "report", "reports", "scope", "charter", "schedule", "budget",
+                 "board", "meeting", "sponsor", "owner", "phase", "kickoff", "kick-off", "timeline", "risk", "risks",
+                 "proposal", "brief", "summary", "review", "closeout", "close-out", "the", "a", "an", "and", "or", "to"}
+_PROJECT_TOKEN = r"(?:[A-Z][\w\-]*|[\w\-]*\d[\w\-]*)"
+_PROJECT_RE = re.compile(rf"\b(?i:project)\s+({_PROJECT_TOKEN}(?:\s+{_PROJECT_TOKEN})?)")
+
+
+def _project_span(text: str, m: re.Match) -> tuple[int, int] | None:
+    words = [(w.start() + m.start(1), w.end() + m.start(1)) for w in re.finditer(r"\S+", m.group(1))]
+    while words and text[words[-1][0]:words[-1][1]].lower() in PROJECT_WORDS:
+        words.pop()
+    if not words or text[words[0][0]:words[0][1]].lower() in PROJECT_WORDS:
+        return None
+    return m.start(), words[-1][1]
+
+
 # Words that, just before a number, mean it is a business reference - not personal data.
 REFERENCE_CONTEXT = re.compile(
     r"(?i)\b(?:ref(?:erence)?|order|invoice|inv|ticket|case|serial|meter|po|purchase order|tracking|tender|policy no|job)\b[\s#:.\-]*(?:no\.?|number|#)?[\s#:.\-]*$"
@@ -235,6 +256,10 @@ class Redactor:
                 for m in rx.finditer(text):
                     if free(m.start(), m.end()):
                         add("INTERNAL_TERM", m.start(), m.end())
+        for m in _PROJECT_RE.finditer(text):
+            span = _project_span(text, m)
+            if span and free(*span):
+                add("PROJECT", *span)
         for rx in (_TITLE_RE, _CUE_RE, _INITIAL_RE, _PAIR_RE):
             for m in rx.finditer(text):
                 span = _trim_name(text, m.start(1), m.end(1))
