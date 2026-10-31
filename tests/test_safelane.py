@@ -412,8 +412,13 @@ def test_model_failure_keeps_the_request_pending(gw, monkeypatch):
 
 
 # ---------- API ----------
-def _client(tmp_path, monkeypatch):
+def _client(tmp_path, monkeypatch, demo=True):
     monkeypatch.setenv("SAFELANE_AUDIT_DB", str(tmp_path / "api.db"))
+    monkeypatch.delenv("SAFELANE_ACCOUNTS", raising=False)
+    if demo:
+        monkeypatch.setenv("SAFELANE_DEMO", "1")
+    else:
+        monkeypatch.delenv("SAFELANE_DEMO", raising=False)
     monkeypatch.delenv("SAFELANE_LLM_URL", raising=False)
     import importlib
     import safelane.main as m
@@ -473,3 +478,16 @@ def test_api_audit_limit_is_bounded(tmp_path, monkeypatch):
     hdr = _auth(c, "zanele")
     assert c.get("/api/audit?limit=-1", headers=hdr).status_code == 422
     assert c.get("/api/audit?limit=501", headers=hdr).status_code == 422
+
+
+def test_demo_accounts_only_work_in_demo_mode(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch, demo=False)
+    t = c.get("/api/tools").json()
+    assert t["demo_accounts"] == [] and t["demo_password"] is None
+    assert c.post("/api/login", json={"username": "sipho", "password": PW}).status_code == 503
+    # pointing a production server at the demo file is refused outright
+    monkeypatch.setenv("SAFELANE_ACCOUNTS", str(ACCOUNTS))
+    import importlib
+    import safelane.main as m
+    with pytest.raises(RuntimeError):
+        importlib.reload(m)

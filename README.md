@@ -98,10 +98,10 @@ Requires Python 3.11+.
 git clone https://github.com/sibusiso90/safelane.git && cd safelane
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn safelane.main:app --reload
+SAFELANE_DEMO=1 uvicorn safelane.main:app --reload   # demo accounts + tamper demo
 ```
 
-Open http://localhost:8000 and sign in with one of the demo accounts. They all use the password `safelane-demo`, and the sign-in page lists them, so one click signs you in:
+Open http://localhost:8000 and sign in with one of the demo accounts. They only exist in demo mode (`SAFELANE_DEMO=1`); a server started without it has no accounts until `SAFELANE_ACCOUNTS` points at a real file, and it refuses a file that carries a published demo password. They all use the password `safelane-demo`, and the sign-in page lists them, so one click signs you in:
 
 | Account | Role | Can |
 |---|---|---|
@@ -113,7 +113,7 @@ Open http://localhost:8000 and sign in with one of the demo accounts. They all u
 
 As Thandi, use the sample buttons (Personal info, API key, Hiring decision, Wrapper plugin, Injection…). Sign in as Sipho to release a held request (he sees placeholders only), back in as Thandi to read the answer with her real values restored, and as Zanele to **Verify chain** under **Audit log**. Five failed sign-ins lock an account for 15 minutes, and every sign-in is logged.
 
-The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, signing in as each account in turn, from redaction to a reviewer releasing a held request to a caught tampering attempt. **Simulate tampering** (admin only) edits one stored entry without updating its hash, so you can watch verification fail and then restore it. The online demo always shows it (each visitor has their own in-browser log). Locally it is off by default, because it lets an admin edit the log; start the server with `SAFELANE_DEMO=1 uvicorn safelane.main:app` to show it.
+The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, signing in as each account in turn, from redaction to a reviewer releasing a held request to a caught tampering attempt. **Simulate tampering** (admin only) edits one stored entry without updating its hash, so you can watch verification fail and then restore it. The online demo always shows it (each visitor has their own in-browser log). On a server it needs demo mode too, because it lets an admin edit the log.
 
 **Before real use**, replace `config/accounts.yaml` (or point `SAFELANE_ACCOUNTS` at your own file, or sign people in through your identity provider) and set `SAFELANE_AUDIT_KEY` to a secret kept outside the server's disk. Without it, the audit key is generated into `safelane_audit.db.key` next to the log, which stops someone who can only edit the database, but not someone who can also read that file.
 

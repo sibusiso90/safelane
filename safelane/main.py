@@ -15,13 +15,19 @@ from .policy import CLASS_ORDER
 from .service import Gateway, GatewayError
 
 ROOT = Path(__file__).resolve().parent.parent
-gateway = Gateway(os.getenv("SAFELANE_REGISTER", ROOT / "config" / "register.yaml"),
-                  os.getenv("SAFELANE_AUDIT_DB", "safelane_audit.db"),
-                  os.getenv("SAFELANE_ACCOUNTS", ROOT / "config" / "accounts.yaml"))
 
-# Demo controls (the audit tamper simulation) are off unless SAFELANE_DEMO=1: they let
-# an admin edit the audit log, so they must never run in production.
+# Demo mode (SAFELANE_DEMO=1) turns on the demo accounts, whose password is published, and
+# the audit tamper simulation. Both must never run in production.
 DEMO = os.getenv("SAFELANE_DEMO") == "1"
+
+# Outside demo mode there are no default accounts: sign-in stays off until SAFELANE_ACCOUNTS
+# points at a real accounts file.
+ACCOUNTS = os.getenv("SAFELANE_ACCOUNTS") or (ROOT / "config" / "accounts.yaml" if DEMO else None)
+
+gateway = Gateway(os.getenv("SAFELANE_REGISTER", ROOT / "config" / "register.yaml"),
+                  os.getenv("SAFELANE_AUDIT_DB", "safelane_audit.db"), ACCOUNTS)
+if gateway.accounts and gateway.accounts.demo_password and not DEMO:
+    raise RuntimeError("The accounts file has a published demo password; use it only with SAFELANE_DEMO=1.")
 
 app = FastAPI(title="SafeLane AI Gateway", version="0.2.0")
 bearer = HTTPBearer(auto_error=False)
@@ -70,8 +76,9 @@ def ui():
 
 @app.get("/api/tools")
 def tools():
-    return {**gateway.tools(), "demo": DEMO, "demo_accounts": gateway.demo_accounts(),
-            "demo_password": gateway.accounts.demo_password if gateway.accounts else None}
+    demo = DEMO and gateway.accounts is not None
+    return {**gateway.tools(), "demo": DEMO, "demo_accounts": gateway.demo_accounts() if demo else [],
+            "demo_password": gateway.accounts.demo_password if demo else None}
 
 
 @app.post("/api/login")
