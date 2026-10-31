@@ -9,11 +9,11 @@
       "recall": 1.0
     },
     "NAME": {
-      "tp": 15,
+      "tp": 16,
       "fp": 0,
-      "fn": 1,
+      "fn": 0,
       "precision": 1.0,
-      "recall": 0.9375
+      "recall": 1.0
     },
     "PHONE": {
       "tp": 1,
@@ -32,16 +32,15 @@
   },
   "detection_overall": {
     "precision": 1.0,
-    "recall": 0.9545454545454546
+    "recall": 1.0
   },
-  "decision_accuracy": 0.9666666666666667,
+  "decision_accuracy": 1.0,
   "confusion": {
     "LOW": {
       "LOW": 10
     },
     "MEDIUM": {
-      "MEDIUM": 14,
-      "LOW": 1
+      "MEDIUM": 15
     },
     "HIGH": {
       "HIGH": 2
@@ -53,15 +52,7 @@
   "leakage": {
     "sensitive_values_bound_for_external_models": 20,
     "baseline_leaked": 20,
-    "gateway_leaked": 1
+    "gateway_leaked": 0
   },
-  "errors": [
-    {
-      "category": "name",
-      "expected": "MEDIUM",
-      "got": "LOW",
-      "rule": "R8_CLEAN",
-      "prompt": "Make this sound more professional: tell sibongile the site visit moved to thursday"
-    }
-  ]
+  "errors": []
 }

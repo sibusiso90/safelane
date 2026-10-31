@@ -1,0 +1,78 @@
+{
+  "prompts": 37,
+  "detection": {
+    "EMAIL": {
+      "tp": 5,
+      "fp": 1,
+      "fn": 1,
+      "precision": 0.8333333333333334,
+      "recall": 0.8333333333333334
+    },
+    "NAME": {
+      "tp": 14,
+      "fp": 3,
+      "fn": 16,
+      "precision": 0.8235294117647058,
+      "recall": 0.4666666666666667
+    }
+  },
+  "detection_overall": {
+    "precision": 0.8260869565217391,
+    "recall": 0.5277777777777778
+  },
+  "decision_accuracy": 0.8648648648648649,
+  "confusion": {
+    "LOW": {
+      "LOW": 13,
+      "MEDIUM": 1
+    },
+    "MEDIUM": {
+      "MEDIUM": 19,
+      "LOW": 4
+    },
+    "HIGH": {},
+    "BLOCKED": {}
+  },
+  "leakage": {
+    "sensitive_values_bound_for_external_models": 36,
+    "baseline_leaked": 36,
+    "gateway_leaked": 15
+  },
+  "errors": [
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "pls draft a thank you msg for nomvula, she covered the call centre all weekend"
+    },
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "email rajesh naidoo the minutes from this morning and say sorry for the delay"
+    },
+    {
+      "category": "single_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Translate into isiZulu: Zanele will collect the keys from reception tomorrow."
+    },
+    {
+      "category": "name_list",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Summarise the roster: Morning shift \u2013 Palesa, Gert. Afternoon shift \u2013 Themba, Shireen."
+    },
+    {
+      "category": "hard_negative",
+      "expected": "LOW",
+      "got": "MEDIUM",
+      "rule": "R7_REDACT",
+      "prompt": "Translate into Afrikaans: The Durban and Polokwane depots will close early on Heritage Day in September."
+    }
+  ]
+}

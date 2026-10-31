@@ -64,6 +64,36 @@ def test_person_names(text, names):
     assert [d.value for d in Redactor().detect(text) if d.kind == "NAME"] == names
 
 
+@pytest.mark.parametrize("text,names", [
+    # v5: found by the audit, not taken from the held-out set
+    ("tell sibongile the site visit moved to thursday", ["sibongile"]),
+    ("Please forward this to thabo.", ["thabo"]),
+    ("Thabo approved the overtime", ["Thabo"]),
+    ("Sipho's leave starts Monday", ["Sipho"]),
+    ("Give Lerato Naidoo a summary of the outage", ["Lerato Naidoo"]),
+    ("Sipho, Thandi and Mike will attend", ["Sipho", "Thandi", "Mike"]),
+    ("Tell me about systems thinking", []),
+    ("remind everyone about the fire drill", []),
+    ("Please draft a call script for the supplier", []),
+    ("Today's outage hit three suburbs", []),
+    ("We met in Durban, Pretoria and Cape Town.", []),
+    ("Everyone said the new roster works", []),
+])
+def test_v5_names(text, names):
+    assert [d.value for d in Redactor().detect(text) if d.kind == "NAME"] == names
+
+
+@pytest.mark.parametrize("text,email", [
+    ("Meet us at acme.co.za tomorrow", None),           # ordinary English, not an address
+    ("The docs are at example.com", None),
+    ("mail thabo at acme dot co dot za", "thabo at acme dot co dot za"),
+    ("write to lerato[at]mail.example", "lerato[at]mail.example"),
+])
+def test_obfuscated_email_needs_a_spelled_dot_or_brackets(text, email):
+    found = [d.value for d in Redactor().detect(text) if d.kind == "EMAIL"]
+    assert found == ([email] if email else [])
+
+
 @pytest.mark.parametrize("text,secret", [
     ("login svc_backup / Wint3r!Gate here", "Wint3r!Gate"),
     ("user: jdoe pass: Autumn$99", "Autumn$99"),

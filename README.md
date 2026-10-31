@@ -10,7 +10,9 @@ SafeLane sits between staff and AI tools. Each prompt passes through it on the w
 1. **Checks the AI Tools Register.** Approved, restricted, not approved or prohibited. Anything unlisted is blocked by default, and the user is pointed to an approved alternative.
 2. **Redacts sensitive data before it leaves.** Names, SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. A *Project …* name that is not on the register is redacted too, and the user is asked to confirm it is public. Numbers hidden with invisible characters (zero-width spaces, soft hyphens), written in fullwidth digits, or spelled out (*"eight zero zero …"*, *"double five"*, Afrikaans *"agt nul"*) are caught as well. The model never sees the real values; the gateway swaps them back into the answer for the user.
 3. **Sorts each request by risk.** `LOW` → send. `MEDIUM` → send redacted. `HIGH` (e.g. *"should we hire her?"*) → hold for a human reviewer. `BLOCKED` (secrets, injection attempts, unapproved tools) → refuse and explain.
-4. **Logs everything in a tamper-evident audit trail.** A SHA-256 hash chain means any edited or deleted entry is detected. The log stores the *redacted* prompt, so the audit trail does not become a new leak.
+4. **Logs everything in a tamper-evident audit trail.** Each entry carries a keyed hash (HMAC-SHA256) of the one before it, and the latest entry is signed, so an edited entry, a deleted one (including the newest), and a chain re-hashed by someone without the key are all detected. The log stores the *redacted* prompt, so the audit trail does not become a new leak.
+
+Everyone **signs in**, and their role decides what they can do: **staff** ask, **reviewers** release other people's held requests, **auditors** read and verify the log, and **admins** run the gateway. No role can do everything, and who asked or approved comes from the session, never from a name typed into a form.
 
 It also **checks what comes back**: sensitive data the user never sent, made-up placeholders, unverified links, and *"draft only, a person decides"* labels on high-impact answers.
 
@@ -27,11 +29,12 @@ Staff use AI because it saves them time. When the approved route is slower than 
 
 ## Technologies used
 
-- **Python 3.10+** with **FastAPI** and **Uvicorn** for the gateway API
-- **Pydantic** for request validation; **PyYAML** for the AI Tools Register
-- **SQLite** (Python standard library) for the hash-chained audit log, using **SHA-256**
+- **Python 3.11+** with **FastAPI** and **Uvicorn** for the gateway API
+- **Pydantic** for request validation; **PyYAML** for the AI Tools Register and accounts
+- **PBKDF2-HMAC-SHA256** password hashes, bearer-token sessions and role checks (Python standard library)
+- **SQLite** (Python standard library) for the audit log, chained with **HMAC-SHA256**
 - **Plain HTML/CSS/JavaScript** single-page UI, with no build step
-- **httpx** for calling an optional OpenAI-compatible model endpoint (e.g. a local **Ollama**)
+- **httpx2** for calling an optional OpenAI-compatible model endpoint (e.g. a local **Ollama**)
 - **pytest** for the automated tests
 - **Pyodide** (Python compiled to WebAssembly) and **GitHub Pages / Actions** for the online demo
 
@@ -58,15 +61,17 @@ flowchart LR
 |---|---|
 | `safelane/redactor.py` | Detectors (regex + checksums + context rules), placeholder mapping, rehydration |
 | `safelane/policy.py` | Register, risk rules R1–R8, output checks |
-| `safelane/audit.py` | SQLite hash-chained audit log + verification |
+| `safelane/audit.py` | SQLite audit log chained with HMAC-SHA256, a signed head record, and verification |
+| `safelane/accounts.py` | Sign-in, password hashing, sessions, lockout and the four roles |
 | `safelane/llm.py` | Mock model (default) or any OpenAI-compatible endpoint, e.g. a local Ollama |
-| `safelane/service.py` | Gateway logic (ask, review queue, audit), independent of any web framework |
+| `safelane/service.py` | Gateway logic (sign-in, ask, review queue, audit) and role checks, independent of any web framework |
 | `safelane/main.py` | FastAPI app exposing the gateway over HTTP |
 | `static/index.html` | Single-page demo UI (no build step) |
 | `static/pyodide-api.js` | In-browser backend for the online demo: runs the same `safelane` package via Pyodide |
 | `config/register.yaml` | Example AI Tools Register + sensitive internal terms |
+| `config/accounts.yaml` | Demo sign-in accounts, one per role (password hashes only) |
 | `eval/` | Synthetic test sets, evaluation script, results |
-| `tests/` | 37 automated tests |
+| `tests/` | 92 automated tests |
 
 ### Policy rules (evaluated in order; the first match wins)
 
@@ -87,7 +92,7 @@ flowchart LR
 
 **Locally:**
 
-Requires Python 3.10+.
+Requires Python 3.11+.
 
 ```bash
 git clone https://github.com/sibusiso90/safelane.git && cd safelane
@@ -96,9 +101,21 @@ pip install -r requirements.txt
 uvicorn safelane.main:app --reload
 ```
 
-Open http://localhost:8000 and use the sample buttons (Personal info, API key, Hiring decision, Wrapper plugin, Injection…). Approve a held request in **Review queue** under a *different* name, then click **Verify chain** under **Audit log**.
+Open http://localhost:8000 and sign in with one of the demo accounts. They all use the password `safelane-demo`, and the sign-in page lists them, so one click signs you in:
 
-The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, from redaction to a blocked self-approval to a caught tampering attempt. **Simulate tampering** under **Audit log** edits one stored entry without updating its hash, so you can watch verification fail and then restore it. The online demo always shows it (each visitor has their own in-browser log). Locally it is off by default, because it lets anyone who can reach the API edit the log; start the server with `SAFELANE_DEMO=1 uvicorn safelane.main:app` to show it.
+| Account | Role | Can |
+|---|---|---|
+| `thandi` (Thandi Nkosi, Customer Care) | staff | Ask the AI; see her own held requests, and their answers once released |
+| `sipho` (Sipho Dlamini, Information Security) | reviewer | Ask; approve or reject other people's held requests |
+| `pieter` (Pieter van Wyk, Human Resources) | reviewer | The same, so a reviewer's own held request can be released by someone else |
+| `zanele` (Zanele Mokoena, Internal Audit) | auditor | Read and verify the audit log and the review queue; cannot ask or approve |
+| `ayesha` (Ayesha Patel, IT Operations) | admin | Read the audit log and queue, and run the tampering demo; cannot ask or approve |
+
+As Thandi, use the sample buttons (Personal info, API key, Hiring decision, Wrapper plugin, Injection…). Sign in as Sipho to release a held request (he sees placeholders only), back in as Thandi to read the answer with her real values restored, and as Zanele to **Verify chain** under **Audit log**. Five failed sign-ins lock an account for 15 minutes, and every sign-in is logged.
+
+The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, signing in as each account in turn, from redaction to a reviewer releasing a held request to a caught tampering attempt. **Simulate tampering** (admin only) edits one stored entry without updating its hash, so you can watch verification fail and then restore it. The online demo always shows it (each visitor has their own in-browser log). Locally it is off by default, because it lets an admin edit the log; start the server with `SAFELANE_DEMO=1 uvicorn safelane.main:app` to show it.
+
+**Before real use**, replace `config/accounts.yaml` (or point `SAFELANE_ACCOUNTS` at your own file, or sign people in through your identity provider) and set `SAFELANE_AUDIT_KEY` to a secret kept outside the server's disk. Without it, the audit key is generated into `safelane_audit.db.key` next to the log, which stops someone who can only edit the database, but not someone who can also read that file.
 
 **Use a real model (optional).** By default a mock model is used, so nothing leaves your machine and no API key is needed. To use a local model:
 ```bash
@@ -108,8 +125,9 @@ export SAFELANE_LLM_MODEL=qwen3:4b-instruct
 
 **Tests and evaluation**
 ```bash
-pytest -q                                   # 61 tests
-python eval/run_eval.py eval/heldout_v4.jsonl  # also: heldout, heldout_v3, prompts, adversarial
+pytest -q                                      # 92 tests
+python eval/run_eval.py eval/heldout_v5.jsonl  # also: heldout, heldout_v3, heldout_v4, prompts, adversarial
+python eval/check_regression.py                # fails if any set scores below its recorded result
 ```
 
 ## Results (synthetic data; see `eval/README.md` for method and caveats)
@@ -122,18 +140,21 @@ python eval/run_eval.py eval/heldout_v4.jsonl  # also: heldout, heldout_v3, prom
 | **Held-out 2** | **v3** | **100% / 95.5%** | **96.7%** | **1 of 20** |
 | Held-out 3 (26 prompts, hidden characters + spelled-out numbers) | v3.1 | 0% / 0% | 34.6% | 16 of 17 |
 | **Held-out 3** | **v4** | **100% / 100%** | **100%** | **0 of 17** |
+| Held-out 4 (37 prompts, lower-case and single names, name lists, e-mails) | v4 | 71.4% / 27.8% | 56.8% | 25 of 36 |
+| **Held-out 4** | **v5** | **82.6% / 52.8%** | **86.5%** | **15 of 36** |
 | Policy-only baseline | n/a | n/a | n/a | every value |
 
-Each version was scored once on a test set written before it. v1 failed a hand-written adversarial set and was improved into v2, which was then scored on held-out set 1. Its one miss (a bare `admin / P@ssw0rd` pair) and the missing name detection were reported, not patched. For v3, held-out set 2 was written, committed and scored against v2 **before** any v3 code existed (commit `b4734cf`). v3 adds person names and unlabelled credential pairs, and was then scored on set 2 once. Its one miss is a lowercase name (`tell sibongile …`). For v4, judges found that ID numbers split by an invisible character or written in words got through. Held-out set 3 was written to cover those cases and their hard negatives, then committed and scored against v3.1 **before** any v4 code existed (commit `b78c1c2`). v4 was then scored on it once. Its perfect score is the weakest of these results: the same person wrote the set and the fix, knowing exactly what the fix would target.
+Each version was scored once on a test set written before it. v1 failed a hand-written adversarial set and was improved into v2, which was then scored on held-out set 1. Its one miss (a bare `admin / P@ssw0rd` pair) and the missing name detection were reported, not patched. For v3, held-out set 2 was written, committed and scored against v2 **before** any v3 code existed (commit `b4734cf`). v3 adds person names and unlabelled credential pairs, and was then scored on set 2 once. Its one miss is a lowercase name (`tell sibongile …`). For v4, judges found that ID numbers split by an invisible character or written in words got through. Held-out set 3 was written to cover those cases and their hard negatives, then committed and scored against v3.1 **before** any v4 code existed (commit `b78c1c2`). v4 was then scored on it once. Its perfect score is the weakest of these results: the same person wrote the set and the fix, knowing exactly what the fix would target. For v5, held-out set 4 was written by a separate AI agent that never saw the detector code, and committed before any v5 code existed (commit `16fefcf`). v5 was then scored on it once. It is the most independent test here, and the result shows it: v5 cuts leaks on the set from 25 to 15 of 36, but name lists without a trailing verb (*"Morning shift – Palesa, Gert"*), multi-word lower-case names (*"email rajesh naidoo"*) and an address with spelled-out dots in its first part still get through. Those were not patched after scoring.
 
 ## Known limitations
 
-- **Rule-based detection.** It's explainable and fast. It finds names from the words around them (titles, greetings, "tell …", "… from procurement"), so it misses a name written with no such cue or in lower case, and it also redacts company or famous names that look like people ("Grant Thornton from audit"). Next step: an on-prem NER model behind the same interface.
+- **Rule-based detection.** It's explainable and fast. It finds names from the words around them (titles, greetings, "tell …", "… from procurement", a possessive, a list), so it misses a name written with no such cue, and it also redacts company or famous names that look like people ("Grant Thornton from audit"). On the independent held-out set 4, 15 of 36 values still got through. Next step: an on-prem NER model behind the same interface.
 - **Obfuscation is an arms race.** v4 handles invisible characters, look-alike digits and spoken digits in English and Afrikaans. Digits written in isiZulu or other languages, numbers split across lines or messages, digits as images, and text that a model is asked to decode (*"reverse this: 7809…"*, base64) are not caught.
 - **Small, self-written test sets.** Needs independent red-teaming and a consented sample of real prompts.
 - **Users can't currently bypass the gateway from inside it, but they can open a browser.** The gateway only works if network controls (proxy/CASB rules) also block unapproved AI sites. That is a deployment dependency, not code.
 - **Review queue is in memory** (by design, so real values never touch disk), so pending reviews are lost on restart. Production would use an encrypted store with expiry.
-- **Demo identity is a free-text name.** Production would use SSO/Active Directory and role-based reviewer rights.
+- **Accounts are a demo file.** Sign-in, roles and lockout are real, but the accounts live in a YAML file and sessions are held in memory (they end when the server restarts). Production would use SSO/Active Directory for identity and keep the same roles.
+- **The audit key protects only as well as it is stored.** Someone with both database access and the key can still rewrite the log. Production would keep the key in a secret store and copy the signed head to write-once storage.
 - **Output checks are heuristics.** They flag; they do not prove an answer is correct.
 
 ## Contribution and AI-assistance disclosure

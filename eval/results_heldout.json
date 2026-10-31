@@ -22,6 +22,13 @@
       "precision": 0.5,
       "recall": 0.5
     },
+    "NAME": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": null
+    },
     "PHONE": {
       "tp": 1,
       "fp": 0,
@@ -45,7 +52,7 @@
     }
   },
   "detection_overall": {
-    "precision": 0.9,
+    "precision": 0.8181818181818182,
     "recall": 0.9
   },
   "decision_accuracy": 1.0,

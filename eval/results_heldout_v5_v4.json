@@ -1,0 +1,155 @@
+{
+  "prompts": 37,
+  "detection": {
+    "EMAIL": {
+      "tp": 5,
+      "fp": 3,
+      "fn": 1,
+      "precision": 0.625,
+      "recall": 0.8333333333333334
+    },
+    "NAME": {
+      "tp": 5,
+      "fp": 1,
+      "fn": 25,
+      "precision": 0.8333333333333334,
+      "recall": 0.16666666666666666
+    }
+  },
+  "detection_overall": {
+    "precision": 0.7142857142857143,
+    "recall": 0.2777777777777778
+  },
+  "decision_accuracy": 0.5675675675675675,
+  "confusion": {
+    "LOW": {
+      "MEDIUM": 3,
+      "LOW": 11
+    },
+    "MEDIUM": {
+      "LOW": 13,
+      "MEDIUM": 10
+    },
+    "HIGH": {},
+    "BLOCKED": {}
+  },
+  "leakage": {
+    "sensitive_values_bound_for_external_models": 36,
+    "baseline_leaked": 36,
+    "gateway_leaked": 25
+  },
+  "errors": [
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "tell sibongile the site visit moved to thursday and ask her to bring the meter readings"
+    },
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "cc johan on the outage summary and make the tone a bit friendlier"
+    },
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "can you write a short note to remind lerato that the safety training starts at 9"
+    },
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "pls draft a thank you msg for nomvula, she covered the call centre all weekend"
+    },
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "invite pieter van wyk and keabetswe to the planning session, keep it short"
+    },
+    {
+      "category": "lowercase_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "email rajesh naidoo the minutes from this morning and say sorry for the delay"
+    },
+    {
+      "category": "single_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Thabo finished the meter audit early. Write a short shout-out for the team newsletter."
+    },
+    {
+      "category": "single_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Sipho's leave starts Monday, so draft a handover note for the Pretoria depot."
+    },
+    {
+      "category": "single_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Translate into isiZulu: Zanele will collect the keys from reception tomorrow."
+    },
+    {
+      "category": "single_name",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Summarise this for the depot noticeboard: Kagiso says the new pumps are louder than expected."
+    },
+    {
+      "category": "name_list",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Ayanda, Pieter and Fatima will attend the water-quality workshop. Draft the joining instructions."
+    },
+    {
+      "category": "name_list",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "please put tumi, marike and yusuf on the cc line and draft a one-paragraph update on the pipe repairs"
+    },
+    {
+      "category": "name_list",
+      "expected": "MEDIUM",
+      "got": "LOW",
+      "rule": "R8_CLEAN",
+      "prompt": "Summarise the roster: Morning shift \u2013 Palesa, Gert. Afternoon shift \u2013 Themba, Shireen."
+    },
+    {
+      "category": "hard_negative",
+      "expected": "LOW",
+      "got": "MEDIUM",
+      "rule": "R7_REDACT",
+      "prompt": "The full outage details are at acme-utilities.co.za/outages \u2014 summarise them in two sentences for SMS."
+    },
+    {
+      "category": "hard_negative",
+      "expected": "LOW",
+      "got": "MEDIUM",
+      "rule": "R7_REDACT",
+      "prompt": "Translate into Afrikaans: The Durban and Polokwane depots will close early on Heritage Day in September."
+    },
+    {
+      "category": "hard_negative",
+      "expected": "LOW",
+      "got": "MEDIUM",
+      "rule": "R7_REDACT",
+      "prompt": "Customers can pay at any Pick n Pay or at www.acme-utilities.co.za. Write that as a short SMS."
+    }
+  ]
+}

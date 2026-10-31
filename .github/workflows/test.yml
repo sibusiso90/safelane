@@ -1,0 +1,28 @@
+name: Tests and evaluation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+      - name: Evaluation sets must not get worse
+        run: |
+          for s in prompts adversarial heldout heldout_v3 heldout_v4 heldout_v5; do
+            python eval/run_eval.py eval/$s.jsonl > /dev/null
+          done
+          python eval/check_regression.py

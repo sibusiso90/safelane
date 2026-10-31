@@ -3,8 +3,8 @@
 Design choices:
 - Deterministic, rule-based detectors (regex + checksums + context). They are
   explainable, testable and run offline. An ML/NER detector can be added behind the
-  same interface later. Names with nothing around them that marks a person
-  ("tell sibongile") are still a known gap.
+  same interface later. Names with nothing around them that marks a person are still
+  a known gap.
 - Every detection is replaced by a typed placeholder ([EMAIL_1]) and the mapping is
   kept in memory for the request only, so the answer can be "rehydrated" for the
   user without the external model ever seeing the real values.
@@ -29,6 +29,15 @@ v4 changes (scored on eval/heldout_v4.jsonl, which was written and committed fir
   The detectors also still run on the raw text, and the results are merged, so
   normalising can only add detections: a removed character cannot glue a number to
   its neighbour, and spoken digits cannot swallow a phone number written beside them.
+
+v5 changes (scored on eval/heldout_v5.jsonl, written by a separate author who did not
+see this code, and committed first):
+  names in lower case right after a word that addresses someone ("tell sibongile",
+  "cc johan"), bare lists of names ("Ayanda, Pieter and Fatima will attend"), a single
+  capitalised name before something a person does ("Thabo approved ...") or with a
+  possessive ("Sipho's leave"), and "give" as an addressing word. An e-mail written
+  with a plain " at " now needs a spelled-out "dot" or a bracketed form to count, so
+  "meet us at acme.co.za" is no longer redacted as an address.
 """
 from __future__ import annotations
 
@@ -82,6 +91,12 @@ def strong_secret(raw: str) -> bool:
     return len(v) >= 6 and bool(re.search(r"[\d\W_]", v)) and v.lower() not in {"placeholder", "redacted", "xxxxxx", "changeme"}
 
 
+def obfuscated_email(raw: str) -> bool:
+    """`name at domain.co.za` is ordinary English ("meet us at acme.co.za"); only count it
+    when the writer also spelled out a dot or used a bracketed [at] / (at)."""
+    return bool(re.search(r"(?i)\[(?:at|dot)\]|\((?:at|dot)\)|\sdot\s", raw))
+
+
 def complex_secret(raw: str) -> bool:
     """For a password with no label: at least 8 characters and 3 of the 4 character classes."""
     v = raw.rstrip(".")
@@ -101,13 +116,43 @@ TITLES = r"(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Adv|Sir|Madam|Mnr|Mev)"
 NAME_CUES = (
     r"(?:Dear|Hi|Hello|Hey|Sawubona|Dumela|Molo|Regards,?|Thanks,?|Thank you,?|Sincerely,?|Attn:?|Cc:?|"
     r"I,|I am|I'm|my name is|named|called|to|for|from|with|by|tell|ask|call|phone|email|e-mail|e-mailed|emailed|"
-    r"remind|contact|thank|congratulate|invite|promote|hire|dismiss|"
+    r"remind|contact|thank|congratulate|invite|promote|hire|dismiss|give|cc|ping|message|inform|notify|"
     r"colleague|manager|supervisor|technician|engineer|employee|candidate|applicant|customer|client|intern|"
     r"attendees? (?:were|was|are|is)|met with|spoke to|signed by|approved by)"
 )
 _TITLE_RE = re.compile(rf"\b{TITLES}\.?\s+({_NAME})")
 _CUE_RE = re.compile(rf"(?:(?<=\s)|^|(?<=[\"'(]))(?i:{NAME_CUES}),?\s+({_NAME})")
 _INITIAL_RE = re.compile(r"(?<![\w.])([A-Z]\.\s?(?:[A-Z]\.\s?)?" + _CAP + r")")
+# v5: a lower-case word straight after a word that addresses someone is a name unless it is
+# an ordinary word ("tell everyone", "ask about", "call back").
+# "call", "phone", "message" and "e-mail" are left out: as nouns they precede ordinary words
+# ("call script", "message confirming").
+_LOWER_CUES = (r"tell|ask|remind|cc|ping|thank|congratulate|invite|inform|notify|dear|hi|hello|hey|"
+               r"(?:forward|send) (?:this|it) to")
+_LOWER_RE = re.compile(rf"(?:(?<=\s)|^)(?i:{_LOWER_CUES}),?\s+([a-z][a-z'\-]{{2,}})\b")
+NOT_LOWER_NAMES = set("""
+me him her them us you yourself everyone everybody someone somebody anyone anybody nobody people all both each
+every some any no not none the a an my our your his their its this that these those there here it
+team teams staff hr finance management manager managers supervisor boss colleague colleagues members users user
+customer customers client clients supplier suppliers vendor vendors contractor contractors applicants candidates
+attendees guys folks sir madam valued department support security legal procurement operations ops group
+about for if whether why how what when where who which whom to again back later today tomorrow now soon and or but
+please kindly around over out up in on at with from by so too also very just off centre center questions question
+board test stories address addresses list thread template draft signature them morning afternoon evening night
+him/her them, everyone, one ones another other others more less few many several anyone's someone's
+""".split())
+
+# v5: bare lists of capitalised names ("Ayanda, Pieter and Fatima will attend").
+_LIST_RE = re.compile(rf"\b({_CAP}(?:,\s+{_CAP})*,?\s+(?:and|&)\s+{_CAP})(?=\s+(?:will|are|were|have|had|attended|"
+                      r"joined|said|met|need|must|should|can|could|did|went|agreed|asked|are\b)|[.,;:!?]|\s*$)")
+
+# v5: one capitalised word before something a person does, or with a possessive.
+_PERSON_VERBS = (r"said|says|asked|asks|approved|reported|called|phoned|e-?mailed|mentioned|wrote|writes|replied|"
+                 r"requested|submitted|signed|joined|resigned|complained|confirmed|wants|needs|thinks|told|sent|"
+                 r"missed|booked|cancelled|canceled|agreed|declined|promised|explained|noted|raised|logged|finished|"
+                 r"completed|starts|started|returns|returned|is on leave|was off|will be (?:off|away|on leave)")
+_SINGLE_RE = re.compile(rf"\b({_CAP})(?='s\b|\s+(?:{_PERSON_VERBS})\b)")
+
 _PAIR_RE = re.compile(rf"\b({_CAP}\s+(?:{_PARTICLE}\s+)?{_CAP})(?=\s+(?:from|at|in|of|said|says|asked|asks|wants|will|has|is|was|"
                       r"joined|reported|called|e-?mailed)\b|,|'s\b)")
 # Capitalised words that start a sentence, name a time, or belong to places and organisations.
@@ -126,6 +171,19 @@ NOT_NAMES = {
     "Bloemfontein", "Polokwane", "Mbombela", "Nelspruit", "Kimberley", "Mahikeng", "Pietermaritzburg", "Soweto",
     "Mthatha", "Rustenburg", "George", "Sandton", "Centurion", "Midrand", "AI", "IT", "HR",
     "Mr", "Mrs", "Ms", "Miss", "Mx", "Dr", "Prof", "Adv", "Sir", "Madam", "Mnr", "Mev",
+    # v5: words that start sentences or name groups, which the single-name rule would otherwise take
+    "I", "It", "He", "She", "We", "They", "You", "There", "Here", "Who", "What", "Which", "When", "Where", "Why", "How",
+    "Today", "Tomorrow", "Yesterday", "Tonight", "Everyone", "Everybody", "Nobody", "Someone", "Somebody", "Anyone",
+    "Everything", "Nothing", "Something", "Management", "Company", "Staff", "Manager", "Supervisor", "Legal",
+    "Security", "Compliance", "Audit", "Risk", "Payroll", "Admin", "Facilities", "Marketing", "Communications",
+    "Engineering", "Maintenance", "Planning", "Network", "System", "Server", "Gateway", "Model", "Client", "Supplier",
+    "Vendor", "Contractor", "Government", "Minister", "Ministry", "Province", "City", "Country", "Area", "Site",
+    "Plant", "Grid", "Report", "Email", "Letter", "Invoice", "Account", "Application", "Last", "Next", "Week",
+    "Month", "Year", "Quarter", "Q1", "Q2", "Q3", "Q4", "Telkom", "Vodacom", "MTN", "Transnet", "SARS", "Sasol",
+    "Discovery", "Woolworths", "Shoprite", "Checkers", "Apple", "Amazon", "Meta", "OpenAI", "Slack", "SharePoint",
+    "PowerPoint", "Copilot", "ChatGPT", "Claude", "Gemini", "Yes", "Okay", "OK", "Hi", "Hello", "Dear", "Thanks",
+    "Note", "Also", "Then", "However", "After", "Before", "Since", "Once", "Both", "Neither", "Either", "Most",
+    "Many", "Several", "Few", "Nobody", "Sales", "Ops", "HQ", "Unit", "Division", "Branch", "Group",
 }
 # A capitalised name followed by one of these is a place or organisation ("Mandela Drive").
 PLACE_NEXT = re.compile(r"\s+(?:Drive|Street|St|Road|Rd|Avenue|Ave|Square|Park|Hospital|School|University|College|"
@@ -272,7 +330,8 @@ _DETECTORS: list[tuple[str, re.Pattern, Callable[[str], bool] | None, bool]] = [
     ("SECRET", re.compile(r"(?i)\b(?!https?\b|ftp\b)[a-z][\w.\-]{1,30}\s*[/:]\s*(?!/)([^\s;,'\"]{8,})"), complex_secret, False),
     ("EMAIL", re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"), None, False),
     ("EMAIL", re.compile(r"(?i)\b[a-z0-9._%+\-]+(?:\s+dot\s+[a-z0-9_\-]+)*\s*(?:\[at\]|\(at\)|\s+at\s+)\s*[a-z0-9\-]+"
-                         r"(?:\s*(?:\[dot\]|\(dot\)|\s+dot\s+|\.)\s*[a-z0-9\-]+)*\s*(?:\[dot\]|\(dot\)|\s+dot\s+|\.)\s*[a-z]{2,}\b"), None, False),
+                         r"(?:\s*(?:\[dot\]|\(dot\)|\s+dot\s+|\.)\s*[a-z0-9\-]+)*\s*(?:\[dot\]|\(dot\)|\s+dot\s+|\.)\s*[a-z]{2,}\b"),
+     obfuscated_email, False),
     ("SA_ID", re.compile(r"(?<![\d\-])\d(?:[ \-]?\d){12}(?![\d\-])"), sa_id_ok, True),
     ("CARD", re.compile(r"(?<!\d)(?:\d[ \-]?){12,18}\d(?!\d)"), card_ok, True),
     ("BANK_ACCOUNT", re.compile(rf"(?i)\b(?:acc(?:ount)?(?:\s*(?:no|number|#))?\.?|{BANKS}(?:\s+acc(?:ount)?)?(?:\s*(?:no|number|#))?\.?)\s*[:#]?\s*(\d{{8,12}})\b"), None, False),
@@ -371,11 +430,21 @@ class Redactor:
             span = _project_span(view, m)
             if span and free(*span):
                 add("PROJECT", *span)
-        for rx in (_TITLE_RE, _CUE_RE, _INITIAL_RE, _PAIR_RE):
+        for rx in (_TITLE_RE, _CUE_RE, _INITIAL_RE, _PAIR_RE, _SINGLE_RE):
             for m in rx.finditer(view):
                 span = _trim_name(view, m.start(1), m.end(1))
                 if span and free(*span):
                     add("NAME", *span)
+        for m in _LIST_RE.finditer(view):
+            names = [n for n in re.finditer(_CAP, m.group(1)) if n.group() not in NOT_NAMES]
+            if len(names) == len(re.findall(_CAP, m.group(1))):  # every item must look like a name
+                for n in names:
+                    s, e = m.start(1) + n.start(), m.start(1) + n.end()
+                    if free(s, e) and not PLACE_NEXT.match(view, e):
+                        add("NAME", s, e)
+        for m in _LOWER_RE.finditer(view):
+            if m.group(1).lower() not in NOT_LOWER_NAMES and free(m.start(1), m.end(1)):
+                add("NAME", m.start(1), m.end(1))
         return found
 
     def redact(self, text: str) -> RedactionResult:

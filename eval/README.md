@@ -2,7 +2,7 @@
 
 All prompts are synthetic. Every name, ID number, card, account, key and codename was generated or invented. None is real.
 
-## Three test sets, three purposes
+## Test sets and their purposes
 
 | Set | Size | How it was made | What it shows |
 |---|---|---|---|
@@ -11,6 +11,8 @@ All prompts are synthetic. Every name, ID number, card, account, key and codenam
 | `heldout.jsonl` | 20 | Hand-written **before** the v2 changes and not used for tuning | A blind test of v2. v3 was built after its result was published, so for v3 it is no longer blind. |
 | `heldout_v3.jsonl` | 30 | Hand-written and committed (`b4734cf`) **before** any v3 code, and scored against v2 at that point | A blind test of v3: person names, unlabelled credentials and hard negatives (places, weekdays, a street named after a person, `admin/admin`). |
 | `heldout_v4.jsonl` | 26 | Written after judges' feedback and committed (`b78c1c2`) **before** any v4 code, and scored against v3.1 at that point | A test of v4: values hidden with invisible or look-alike characters, spelled-out numbers (English, Afrikaans, *double five*), a split-word injection, and hard negatives (counting, quantities, an invoice number in words, a bad-checksum ID). |
+
+| `heldout_v5.jsonl` | 37 | Written by a separate AI agent that was told not to read the detector code, and committed (`16fefcf`) **before** any v5 code; scored against v4 and v5 once each | A test of v5: names in lower case, single first names, bare name lists, normal and obfuscated e-mails, and hard negatives (*meet us at acme.co.za*, *tell me*, *Today's outage*, place names). |
 
 Run: `python eval/run_eval.py eval/<set>.jsonl` (writes `results_<set>.json`; the `report_<set>.md` files are saved outputs).
 
@@ -27,6 +29,8 @@ Run: `python eval/run_eval.py eval/<set>.jsonl` (writes `results_<set>.json`; th
 | **Held-out 2 (30)** | **v3** | **100%** | **95.5%** | **96.7%** | **1 / 20** |
 | Held-out 3 (26) | v3.1 | 0%† | 0% | 34.6% | 16 / 17 |
 | **Held-out 3 (26)** | **v4** | **100%** | **100%** | **100%** | **0 / 17** |
+| Held-out 4 (37) | v4 | 71.4% | 27.8% | 56.8% | 25 / 36 |
+| **Held-out 4 (37)** | **v5** | **82.6%** | **52.8%** | **86.5%** | **15 / 36** |
 
 From v3 on, person names count towards detection and leakage. Re-running the older sets with v3 (names now counted): templated 100% / 92.9%, 100% decisions, 0 / 195 leaked; adversarial 88.9% / 96.0%, 100%, 0 / 25; held-out 1 90.0% / 90.0%, 100%, 0 / 10 (not blind for v3). On the adversarial set, one of the "false positives" is a real name (*Kagiso Khumalo*) that the set never labelled, because names were out of scope when it was written. The labels were left as they are.
 
@@ -56,9 +60,21 @@ An automated security review of the first v4 commit found that normalising could
 
 The v4 held-out result (100%) should carry the least weight of any held-out number here. The set was written to cover the specific bypasses the judges reported, by the same author who then wrote the fix, so it shows that the reported gaps are closed, not that obfuscation in general is handled.
 
+## What v5 changed
+Names in lower case right after a word that addresses someone (*tell sibongile*, *cc johan*, *forward this to thabo*), unless the next word is an ordinary one (*tell me*, *remind everyone*, *ask about*); bare lists of capitalised names (*Ayanda, Pieter and Fatima will attend*); a single capitalised name before something a person does (*Thabo approved …*) or with a possessive (*Sipho's leave*); and *give* as an addressing word (*Give Lerato Naidoo a rating*). A longer list of sentence-start and group words (*Today*, *Everyone*, *Management*, *Legal*, common company and product names) keeps those rules from taking ordinary words. *Call*, *phone*, *message* and *e-mail* are not used as lower-case cues, because as nouns they precede ordinary words (*call script*, *call time out*); development testing on the older sets found that. An e-mail written with a plain *at* now needs a spelled-out *dot* or a bracketed `[at]`/`(at)` to count, so *meet us at acme.co.za* is no longer redacted as an address.
+
+On the older sets, v5 scores 100% decisions with no leaks on all five. The templated set's name recall rose from 78.6% to 85.7% (the rest are names that only appear inside an e-mail address, which is redacted as EMAIL). The only "false positives" left are real names the older sets never labelled (*Johan's contract*, *Kagiso Khumalo*).
+
+On held-out 4, which is the most independent test so far, v5 is clearly better than v4 but far from done. Leaks fell from 25 to 15 of 36 values and decision accuracy rose from 56.8% to 86.5%. Read after scoring and **not** patched:
+- **Name lists without a trailing verb** account for 11 of the 15 leaks: *Morning shift – Palesa, Gert*, *put tumi, marike and yusuf on the cc line*, a list that ends with a full name (*Ashwin Pillay*).
+- **Multi-word lower-case names** (*email rajesh naidoo*, *invite pieter van wyk and keabetswe*), and a lower-case name after *for* (*a thank you msg for nomvula*).
+- **A single name before *will*** (*Zanele will collect the keys*): *will* was left out of the single-name verbs because *Management will*, *Durban will* and similar are common.
+- **An e-mail with spelled-out dots in its first part** (*thandeka dot zulu at acmeutilities dot co dot za*): it was redacted, but as the wrong span (*me at thandeka dot zulu*), so part of the address went out.
+- **One over-redaction:** *Heritage Day* was taken for a name.
+
 ## Honest limits
 - **v2 held-out miss, fixed in v3:** `admin / P@ssw0rd2026`, a username/password pair with no "password" label. It was deliberately not patched before v2 was reported. v3's credential-pair rule catches it, and its effect was measured on held-out 2, not on the set that exposed it.
 - **Names are found from context only.** A name with no cue, in lower case, or in a bare list (*Sipho, Thandi and Mike will attend*) is missed, and company or famous names that look like people (*Grant Thornton from audit*) are redacted when they need not be. 15 of the 70 names in the templated set are still missed. The next step is an on-prem NER model (e.g. a small multilingual model) behind the same interface.
-- **Small, self-written test sets.** The same person wrote the rules and the tests. Held-out 2 was committed before the v3 code, but its author still knew what v3 would try to catch. A real pilot needs red-teaming by people who did not write the rules, and a sample of real (consented, redacted) prompts.
+- **Small, self-written test sets.** The same person wrote the rules and the tests for every set up to held-out 3. Held-out 2 was committed before the v3 code, but its author still knew what v3 would try to catch. Held-out 4 was written by a separate agent that did not see the code, which is closer to a real blind test, and its lower score reflects that. A real pilot needs red-teaming by people who did not write the rules, and a sample of real (consented, redacted) prompts.
 - **Obfuscation has no end.** Not handled: digits in isiZulu or other languages, a number split across lines or messages, a number in an image, or text the model is asked to decode (reversed digits, base64, *add one to each digit*).
 - **Detection will never be perfect.** That is why the design routes most work to the on-prem model by default: a missed value there stays inside the organisation.
