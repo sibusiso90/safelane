@@ -34,9 +34,11 @@ SESSION_TTL = 8 * 3600
 # Failed sign-ins are counted per (username, client) pair, so a stranger guessing at an
 # account cannot lock its owner out from elsewhere; per client across all usernames, so one
 # client cannot spray guesses over many accounts; and per account across all clients, with a
-# higher limit, so many clients together cannot guess without end. Locking an owner out that
-# way takes at least MAX_ACCOUNT_FAILURES / MAX_FAILURES separate clients.
+# higher limit, so many clients together cannot guess without end. That last limit is skipped
+# for a client that has signed in to the account before, so attackers cannot use it to lock
+# the owner out of their usual device.
 MAX_FAILURES, MAX_CLIENT_FAILURES, MAX_ACCOUNT_FAILURES, LOCKOUT_WINDOW = 5, 20, 50, 15 * 60
+KNOWN_CLIENT_TTL = 30 * 24 * 3600
 ITERATIONS = 600_000
 
 
@@ -114,12 +116,20 @@ class AuthError(Exception):
 
 
 def client_key(client: str) -> str:
-    """IPv6 clients are counted by /64 network: one attacker usually holds a whole /64."""
+    """IPv6 clients are counted by /64 network: one attacker usually holds a whole /64. IPv4
+    written as IPv6 (::ffff:1.2.3.4, 6to4, Teredo) is counted as the IPv4 address it carries,
+    or every IPv4 client of a dual-stack server would share one /64."""
     try:
         ip = ipaddress.ip_address(client)
     except ValueError:
         return client
-    return str(ipaddress.ip_network(f"{ip}/64", strict=False)) if ip.version == 6 else str(ip)
+    if ip.version == 6:
+        v4 = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None)
+        if v4:
+            return str(v4)
+        if ip.is_global:
+            return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    return str(ip)
 
 
 class Accounts:
@@ -134,6 +144,7 @@ class Accounts:
             self._users[acct.username] = (acct, u["password_hash"])
         self._sessions: dict[str, tuple[Account, float]] = {}
         self._failures: dict[tuple, list[float]] = {}
+        self._known: dict[tuple[str, str], float] = {}  # (username, client) -> last successful sign-in
         self._lock = threading.Lock()
 
     def exists(self, username: str) -> bool:
@@ -145,9 +156,10 @@ class Accounts:
     def login(self, username: str, password: str, client: str = "local") -> tuple[str, Account]:
         key, client = username.strip().lower(), client_key(client)
         now = time.time()
-        buckets = [((key, client), MAX_FAILURES), (("*", client), MAX_CLIENT_FAILURES),
-                   ((key, "*"), MAX_ACCOUNT_FAILURES)]
+        buckets = [((key, client), MAX_FAILURES), (("*", client), MAX_CLIENT_FAILURES)]
         with self._lock:
+            if now - self._known.get((key, client), 0) > KNOWN_CLIENT_TTL:
+                buckets.append(((key, "*"), MAX_ACCOUNT_FAILURES))
             # Count the attempt before the slow hash, so parallel guesses cannot all slip
             # under the limit; a successful sign-in clears the count for that account.
             recent = {b: [t for t in self._failures.get(b, []) if now - t < LOCKOUT_WINDOW] for b, _ in buckets}
@@ -161,6 +173,7 @@ class Accounts:
             raise AuthError(401, "Wrong username or password.")
         token = secrets.token_urlsafe(32)
         with self._lock:
+            self._known[(key, client)] = now
             self._failures.pop((key, client), None)
             for b in (("*", client), (key, "*")):
                 if self._failures.get(b):

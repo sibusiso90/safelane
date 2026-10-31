@@ -562,8 +562,24 @@ def test_many_clients_together_hit_the_account_limit():
     assert e.value.status == 429
 
 
+def test_owner_device_is_not_locked_out_by_many_attackers():
+    a = Accounts(ACCOUNTS)
+    a.login("thandi", PW, client="10.0.0.5")  # her usual device
+    for i in range(50):
+        with pytest.raises(Exception):
+            a.login("thandi", "wrong", client=f"192.0.2.{i // 5}")
+    assert a.login("thandi", PW, client="10.0.0.5")[1].username == "thandi"
+    with pytest.raises(Exception) as e:
+        a.login("thandi", PW, client="10.9.9.9")  # an unknown client still hits the account limit
+    assert e.value.status == 429
+
+
 def test_ipv6_clients_are_grouped_by_64():
     from safelane.accounts import client_key
     assert client_key("2001:db8:1:2::1") == client_key("2001:db8:1:2:ffff::9") == "2001:db8:1:2::/64"
     assert client_key("2001:db8:1:3::1") != client_key("2001:db8:1:2::1")
     assert client_key("203.0.113.9") == "203.0.113.9" and client_key("browser") == "browser"
+    assert client_key("::ffff:203.0.113.9") == "203.0.113.9"           # IPv4-mapped is not one shared /64
+    assert client_key("::ffff:198.51.100.1") != client_key("::ffff:203.0.113.9")
+    assert client_key("2002:cb00:7109::1") == "203.0.113.9"             # 6to4
+    assert client_key("::1") == "::1"                                    # loopback stays itself
