@@ -17,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from .redactor import Redactor, RedactionResult, normalise
+from .redactor import Redactor, RedactionResult, hidden_in_words, normalise
 
 CLASS_ORDER = ["public", "internal", "personal", "confidential", "secret"]
 
@@ -62,10 +62,16 @@ DIRECT_DECISION = re.compile(
 )
 
 
-def high_impact(prompt: str) -> bool:
-    if STRONG_IMPACT.search(prompt) or DIRECT_DECISION.search(prompt):
+def _loose(rx: re.Pattern) -> re.Pattern:
+    """The same rule without word boundaries, for text where hidden characters split or glued words."""
+    return re.compile(rx.pattern.replace(r"\b", ""))
+
+
+def high_impact(prompt: str, loose: bool = False) -> bool:
+    strong, direct, cue, obj = (_LOOSE_IMPACT if loose else (STRONG_IMPACT, DIRECT_DECISION, DECISION_CUE, DECISION_OBJECT))
+    if strong.search(prompt) or direct.search(prompt):
         return True
-    return bool(DECISION_CUE.search(prompt) and DECISION_OBJECT.search(prompt))
+    return bool(cue.search(prompt) and obj.search(prompt))
 
 
 # Misuse / prompt-injection / control-evasion indicators.
@@ -78,6 +84,8 @@ MISUSE = re.compile(
     r"(?:reveal|print|show|output)\b.{0,20}\b(?:system prompt|redaction mapping|mapping table|other users)|"
     r"what other users (?:asked|typed|sent))"
 )
+_LOOSE_IMPACT = tuple(_loose(rx) for rx in (STRONG_IMPACT, DIRECT_DECISION, DECISION_CUE, DECISION_OBJECT))
+MISUSE_LOOSE = _loose(MISUSE)
 
 
 @dataclass
@@ -131,15 +139,21 @@ class PolicyEngine:
     def evaluate(self, prompt: str, tool_id: str, declared_class: str = "internal") -> Decision:
         tool = self.register.get(tool_id)
         red = self.redactor.redact(prompt)
-        # v4: check the raw prompt and a cleaned copy, so a hidden character can neither split
-        # "ignore" nor glue "ignore" to the next word and slip past the rule.
-        views = (prompt, normalise(prompt)[0])
+        # v4: check the raw prompt and cleaned copies with hidden characters dropped or read as
+        # spaces, so one can neither split "ignore" nor glue it to the next word unnoticed.
+        views = (prompt, normalise(prompt)[0], normalise(prompt, hidden=" ")[0])
+        # Hidden characters inside words can split and glue at once ("dis|regard|all"). Only for
+        # such prompts, also match without word boundaries: more false positives, but on text
+        # that already looks like an evasion attempt.
+        evasive = hidden_in_words(prompt)
         original_class = _max_class([declared_class] + [KIND_TO_CLASS[k] for k in red.kinds])
         # After redaction, the detected values are gone; what remains is the user's declared class.
         residual_class = declared_class
         flags: list[str] = []
         if tool.get("hosting") == "offshore" and "personal" in {KIND_TO_CLASS[k] for k in red.kinds}:
             flags.append("POPIA s72: personal information would cross the border - redaction enforced")
+        if evasive:
+            flags.append("Hidden characters inside words: removed before checking (possible evasion attempt)")
         if "PROJECT" in red.kinds:
             flags.append("Project name not on the register: redacted as possibly confidential. "
                          "Confirm it is public, or ask for it to be registered.")
@@ -153,7 +167,7 @@ class PolicyEngine:
                      f"'{tool['name']}' is {status.replace('_', ' ')} on the AI Tools Register.",
                      self.register.approved_for(residual_class))
 
-        if any(MISUSE.search(v) for v in views):
+        if any(MISUSE.search(v) for v in views) or (evasive and MISUSE_LOOSE.search(views[1])):
             flags.append("Security event: control-evasion or prompt-injection pattern")
             return d("BLOCKED", "R2_MISUSE", "Prompt matches a misuse / prompt-injection pattern.")
 
@@ -164,7 +178,7 @@ class PolicyEngine:
                      [t for t in self.register.approved_for("secret") if self.register.get(t)["hosting"] == "on_prem"]
                      or self.register.approved_for("confidential"))
 
-        if any(high_impact(v) for v in views):
+        if any(high_impact(v) for v in views) or (evasive and high_impact(views[1], loose=True)):
             return d("HIGH", "R4_HIGH_IMPACT",
                      "Task could drive a consequential decision about a person or money; a human must review.")
 

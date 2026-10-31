@@ -198,12 +198,15 @@ def _spoken_digits(run: re.Match) -> list[tuple[str, int, int]] | None:
     return out if spoken >= 3 and len(out) >= 7 else None
 
 
-def normalise(text: str, spoken: bool = True) -> tuple[str, list[tuple[int, int]]]:
-    """A cleaned-up view of `text`, and for each of its characters the span it came from in `text`."""
+def normalise(text: str, spoken: bool = True, hidden: str = "") -> tuple[str, list[tuple[int, int]]]:
+    """A cleaned-up view of `text`, and for each of its characters the span it came from in `text`.
+    Hidden characters are dropped, or replaced by `hidden` (e.g. a space)."""
     chars: list[str] = []
     spans: list[tuple[int, int]] = []
     for i, ch in enumerate(text):
         if unicodedata.category(ch) == "Cf":  # zero-width, soft hyphen, word joiner, BOM ...
+            chars += hidden
+            spans += [(i, i + 1)] * len(hidden)
             continue
         if not ch.isascii() and (n := unicodedata.normalize("NFKC", ch)).isascii():
             ch = n  # fullwidth digits and letters, non-breaking space
@@ -229,6 +232,15 @@ def normalise(text: str, spoken: bool = True) -> tuple[str, list[tuple[int, int]
     out_spans += spans[pos:]
     return "".join(out), out_spans
 
+
+def hidden_in_words(text: str) -> bool:
+    """A hidden character between two letters or digits: rare in normal writing, common in evasion."""
+    return any(unicodedata.category(ch) == "Cf" and 0 < i < len(text) - 1
+               and text[i - 1].isalnum() and text[i + 1].isalnum() for i, ch in enumerate(text))
+
+
+# When detections from different views overlap, the merged span keeps the first of these kinds.
+KIND_PRIORITY = ["SECRET", "INTERNAL_TERM", "PROJECT", "SA_ID", "CARD", "BANK_ACCOUNT", "EMAIL", "PHONE", "NAME"]
 
 # Words that, just before a number, mean it is a business reference - not personal data.
 REFERENCE_CONTEXT = re.compile(
@@ -309,10 +321,14 @@ class Redactor:
         for view, spans in views:
             for kind, s, e in self._detect_view(view):
                 a, b = spans[s][0], spans[e - 1][1]
+                # Overlapping detections from different views merge into one span covering all of
+                # them, labelled with the most sensitive kind: merging may only redact more.
                 overlap = [d for d in found if a < d.end and b > d.start]
-                # A later view may widen a detection (the whole spoken number), never drop one.
-                if all(a <= d.start and d.end <= b and (b - a) > (d.end - d.start) for d in overlap):
-                    found = [d for d in found if d not in overlap] + [Detection(kind, text[a:b], a, b)]
+                if overlap:
+                    a, b = min([a] + [d.start for d in overlap]), max([b] + [d.end for d in overlap])
+                    kind = min([kind] + [d.kind for d in overlap], key=KIND_PRIORITY.index)
+                    found = [d for d in found if d not in overlap]
+                found.append(Detection(kind, text[a:b], a, b))
         return sorted(found, key=lambda d: d.start)
 
     def _detect_view(self, view: str) -> list[tuple[str, int, int]]:
