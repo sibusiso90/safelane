@@ -19,10 +19,18 @@ v3 changes (scored on eval/heldout_v3.jsonl, which was written and committed fir
   person names from titles, greetings, sign-offs, addressing words, initials and
   "Firstname Surname from/said ..." patterns; "pass:" labels; and unlabelled
   "user / password" pairs when the password is long and mixes character classes.
+
+v4 changes (scored on eval/heldout_v4.jsonl, which was written and committed first):
+  every detector runs on a normalised view of the prompt: invisible characters
+  (zero-width space, soft hyphen, word joiner ...) are removed, look-alike digits
+  (fullwidth ０-９) become ASCII, and runs of spoken digits ("eight zero zero ...",
+  "double five", Afrikaans "agt nul") become numbers. An offset map points each
+  detection back at the original characters, so redaction replaces exactly those.
 """
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -157,6 +165,66 @@ def _project_span(text: str, m: re.Match) -> tuple[int, int] | None:
     return m.start(), words[-1][1]
 
 
+# --- Normalisation (v4) ---
+# Spoken digits in English and Afrikaans. A run only becomes a number when it has at
+# least 3 spoken digits and 7 digits in all, so "one two buckle my shoe" stays text.
+DIGIT_WORDS = {w: str(i) for i, w in enumerate("zero one two three four five six seven eight nine".split())}
+DIGIT_WORDS |= {w: str(i) for i, w in enumerate("nul een twee drie vier vyf ses sewe agt nege".split())}
+DIGIT_WORDS |= {"oh": "0", "nought": "0"}
+REPEAT_WORDS = {"double": 2, "triple": 3, "dubbel": 2}
+_TOKEN = r"(?:\b(?:" + "|".join(sorted(DIGIT_WORDS | REPEAT_WORDS, key=len, reverse=True)) + r")\b|\d+)"
+_NUM_TOKEN = re.compile(rf"(?i){_TOKEN}")
+_NUM_RUN = re.compile(rf"(?i){_TOKEN}(?:[\s,\-]+{_TOKEN})+")
+
+
+def _spoken_digits(run: re.Match) -> list[tuple[str, int, int]] | None:
+    """Digits in a run of tokens, each with the span it came from; None if it is not a spoken number."""
+    out, spoken, repeat = [], 0, None
+    for t in _NUM_TOKEN.finditer(run.group()):
+        s, e, word = run.start() + t.start(), run.start() + t.end(), t.group().lower()
+        if word in REPEAT_WORDS:
+            repeat = (REPEAT_WORDS[word], s)
+            continue
+        if word.isdigit():
+            out += [(ch, s + i, s + i + 1) for i, ch in enumerate(word)]
+        else:
+            n, s = (repeat[0], repeat[1]) if repeat else (1, s)
+            out += [(DIGIT_WORDS[word], s, e)] * n
+            spoken += 1
+        repeat = None
+    return out if spoken >= 3 and len(out) >= 7 else None
+
+
+def normalise(text: str) -> tuple[str, list[tuple[int, int]]]:
+    """The text detectors see, and for each of its characters the span it came from in `text`."""
+    chars: list[str] = []
+    spans: list[tuple[int, int]] = []
+    for i, ch in enumerate(text):
+        if unicodedata.category(ch) == "Cf":  # zero-width, soft hyphen, word joiner, BOM ...
+            continue
+        if not ch.isascii() and (n := unicodedata.normalize("NFKC", ch)).isascii():
+            ch = n  # fullwidth digits and letters, non-breaking space
+        chars += ch
+        spans += [(i, i + 1)] * len(ch)
+    flat = "".join(chars)
+    out: list[str] = []
+    out_spans: list[tuple[int, int]] = []
+    pos = 0
+    for m in _NUM_RUN.finditer(flat):
+        digits = _spoken_digits(m)
+        if digits is None:
+            continue
+        out.append(flat[pos:m.start()])
+        out_spans += spans[pos:m.start()]
+        for d, s, e in digits:
+            out.append(d)
+            out_spans.append((spans[s][0], spans[e - 1][1]))
+        pos = m.end()
+    out.append(flat[pos:])
+    out_spans += spans[pos:]
+    return "".join(out), out_spans
+
+
 # Words that, just before a number, mean it is a business reference - not personal data.
 REFERENCE_CONTEXT = re.compile(
     r"(?i)\b(?:ref(?:erence)?|order|invoice|inv|ticket|case|serial|meter|po|purchase order|tracking|tender|policy no|job)\b[\s#:.\-]*(?:no\.?|number|#)?[\s#:.\-]*$"
@@ -232,37 +300,39 @@ class Redactor:
 
     def detect(self, text: str) -> list[Detection]:
         found: list[Detection] = []
-        taken: list[tuple[int, int]] = []
+        taken: list[tuple[int, int]] = []  # spans in the normalised view
+        view, spans = normalise(text)
 
         def free(s: int, e: int) -> bool:
             return all(e <= a or s >= b for a, b in taken)
 
         def add(kind, s, e):
-            found.append(Detection(kind, text[s:e], s, e))
+            a, b = spans[s][0], spans[e - 1][1]
+            found.append(Detection(kind, text[a:b], a, b))
             taken.append((s, e))
 
         for kind, pat, check, ref_ctx in _DETECTORS:
-            for m in pat.finditer(text):
+            for m in pat.finditer(view):
                 s, e = (m.start(1), m.end(1)) if m.lastindex else (m.start(), m.end())
-                val = text[s:e]
+                val = view[s:e]
                 if check and not check(val):
                     continue
-                if ref_ctx and REFERENCE_CONTEXT.search(text[max(0, s - 30):s]):
+                if ref_ctx and REFERENCE_CONTEXT.search(view[max(0, s - 30):s]):
                     continue
                 if free(s, e):
                     add(kind, s, e)
         for rx in (self._term_re, self._alias_re):
             if rx:
-                for m in rx.finditer(text):
+                for m in rx.finditer(view):
                     if free(m.start(), m.end()):
                         add("INTERNAL_TERM", m.start(), m.end())
-        for m in _PROJECT_RE.finditer(text):
-            span = _project_span(text, m)
+        for m in _PROJECT_RE.finditer(view):
+            span = _project_span(view, m)
             if span and free(*span):
                 add("PROJECT", *span)
         for rx in (_TITLE_RE, _CUE_RE, _INITIAL_RE, _PAIR_RE):
-            for m in rx.finditer(text):
-                span = _trim_name(text, m.start(1), m.end(1))
+            for m in rx.finditer(view):
+                span = _trim_name(view, m.start(1), m.end(1))
                 if span and free(*span):
                     add("NAME", *span)
         return sorted(found, key=lambda d: d.start)

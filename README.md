@@ -8,7 +8,7 @@
 SafeLane sits between staff and AI tools. Each prompt passes through it on the way out, and it does four things:
 
 1. **Checks the AI Tools Register.** Approved, restricted, not approved or prohibited. Anything unlisted is blocked by default, and the user is pointed to an approved alternative.
-2. **Redacts sensitive data before it leaves.** Names, SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. A *Project …* name that is not on the register is redacted too, and the user is asked to confirm it is public. The model never sees the real values; the gateway swaps them back into the answer for the user.
+2. **Redacts sensitive data before it leaves.** Names, SA ID numbers, cards, bank accounts, phone numbers, e-mails, credentials and internal codenames are replaced with placeholders. A *Project …* name that is not on the register is redacted too, and the user is asked to confirm it is public. Numbers hidden with invisible characters (zero-width spaces, soft hyphens), written in fullwidth digits, or spelled out (*"eight zero zero …"*, *"double five"*, Afrikaans *"agt nul"*) are caught as well. The model never sees the real values; the gateway swaps them back into the answer for the user.
 3. **Sorts each request by risk.** `LOW` → send. `MEDIUM` → send redacted. `HIGH` (e.g. *"should we hire her?"*) → hold for a human reviewer. `BLOCKED` (secrets, injection attempts, unapproved tools) → refuse and explain.
 4. **Logs everything in a tamper-evident audit trail.** A SHA-256 hash chain means any edited or deleted entry is detected. The log stores the *redacted* prompt, so the audit trail does not become a new leak.
 
@@ -108,8 +108,8 @@ export SAFELANE_LLM_MODEL=qwen3:4b-instruct
 
 **Tests and evaluation**
 ```bash
-pytest -q                                   # 37 tests
-python eval/run_eval.py eval/heldout_v3.jsonl  # also: heldout, prompts, adversarial
+pytest -q                                   # 49 tests
+python eval/run_eval.py eval/heldout_v4.jsonl  # also: heldout, heldout_v3, prompts, adversarial
 ```
 
 ## Results (synthetic data; see `eval/README.md` for method and caveats)
@@ -120,13 +120,16 @@ python eval/run_eval.py eval/heldout_v3.jsonl  # also: heldout, prompts, adversa
 | **Held-out 1** | **v2** | **88.9% / 80.0%** | **95.0%** | **1 of 10** |
 | Held-out 2 (30 prompts, names + credentials) | v2 | 100% / 13.6% | 50.0% | 17 of 20 |
 | **Held-out 2** | **v3** | **100% / 95.5%** | **96.7%** | **1 of 20** |
+| Held-out 3 (26 prompts, hidden characters + spelled-out numbers) | v3.1 | 0% / 0% | 34.6% | 16 of 17 |
+| **Held-out 3** | **v4** | **100% / 100%** | **100%** | **0 of 17** |
 | Policy-only baseline | n/a | n/a | n/a | every value |
 
-Each version was scored once on a test set written before it. v1 failed a hand-written adversarial set and was improved into v2, which was then scored on held-out set 1. Its one miss (a bare `admin / P@ssw0rd` pair) and the missing name detection were reported, not patched. For v3, held-out set 2 was written, committed and scored against v2 **before** any v3 code existed (commit `b4734cf`). v3 adds person names and unlabelled credential pairs, and was then scored on set 2 once. Its one miss is a lowercase name (`tell sibongile …`).
+Each version was scored once on a test set written before it. v1 failed a hand-written adversarial set and was improved into v2, which was then scored on held-out set 1. Its one miss (a bare `admin / P@ssw0rd` pair) and the missing name detection were reported, not patched. For v3, held-out set 2 was written, committed and scored against v2 **before** any v3 code existed (commit `b4734cf`). v3 adds person names and unlabelled credential pairs, and was then scored on set 2 once. Its one miss is a lowercase name (`tell sibongile …`). For v4, judges found that ID numbers split by an invisible character or written in words got through. Held-out set 3 was written to cover those cases and their hard negatives, then committed and scored against v3.1 **before** any v4 code existed (commit `b78c1c2`). v4 was then scored on it once. Its perfect score is the weakest of these results: the same person wrote the set and the fix, knowing exactly what the fix would target.
 
 ## Known limitations
 
 - **Rule-based detection.** It's explainable and fast. It finds names from the words around them (titles, greetings, "tell …", "… from procurement"), so it misses a name written with no such cue or in lower case, and it also redacts company or famous names that look like people ("Grant Thornton from audit"). Next step: an on-prem NER model behind the same interface.
+- **Obfuscation is an arms race.** v4 handles invisible characters, look-alike digits and spoken digits in English and Afrikaans. Digits written in isiZulu or other languages, numbers split across lines or messages, digits as images, and text that a model is asked to decode (*"reverse this: 7809…"*, base64) are not caught.
 - **Small, self-written test sets.** Needs independent red-teaming and a consented sample of real prompts.
 - **Users can't currently bypass the gateway from inside it, but they can open a browser.** The gateway only works if network controls (proxy/CASB rules) also block unapproved AI sites. That is a deployment dependency, not code.
 - **Review queue is in memory** (by design, so real values never touch disk), so pending reviews are lost on restart. Production would use an encrypted store with expiry.

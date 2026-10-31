@@ -1,0 +1,70 @@
+{
+  "prompts": 26,
+  "detection": {
+    "BANK_ACCOUNT": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "CARD": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "EMAIL": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "INTERNAL_TERM": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "PHONE": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "SA_ID": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "detection_overall": {
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "decision_accuracy": 1.0,
+  "confusion": {
+    "LOW": {
+      "LOW": 8
+    },
+    "MEDIUM": {
+      "MEDIUM": 17
+    },
+    "HIGH": {},
+    "BLOCKED": {
+      "BLOCKED": 1
+    }
+  },
+  "leakage": {
+    "sensitive_values_bound_for_external_models": 17,
+    "baseline_leaked": 17,
+    "gateway_leaked": 0
+  },
+  "errors": []
+}

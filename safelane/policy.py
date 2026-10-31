@@ -17,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from .redactor import Redactor, RedactionResult
+from .redactor import Redactor, RedactionResult, normalise
 
 CLASS_ORDER = ["public", "internal", "personal", "confidential", "secret"]
 
@@ -131,6 +131,7 @@ class PolicyEngine:
     def evaluate(self, prompt: str, tool_id: str, declared_class: str = "internal") -> Decision:
         tool = self.register.get(tool_id)
         red = self.redactor.redact(prompt)
+        plain, _ = normalise(prompt)  # v4: hidden characters cannot split "ignore" or "dismiss"
         original_class = _max_class([declared_class] + [KIND_TO_CLASS[k] for k in red.kinds])
         # After redaction, the detected values are gone; what remains is the user's declared class.
         residual_class = declared_class
@@ -150,7 +151,7 @@ class PolicyEngine:
                      f"'{tool['name']}' is {status.replace('_', ' ')} on the AI Tools Register.",
                      self.register.approved_for(residual_class))
 
-        if MISUSE.search(prompt):
+        if MISUSE.search(plain):
             flags.append("Security event: control-evasion or prompt-injection pattern")
             return d("BLOCKED", "R2_MISUSE", "Prompt matches a misuse / prompt-injection pattern.")
 
@@ -161,7 +162,7 @@ class PolicyEngine:
                      [t for t in self.register.approved_for("secret") if self.register.get(t)["hosting"] == "on_prem"]
                      or self.register.approved_for("confidential"))
 
-        if high_impact(prompt):
+        if high_impact(plain):
             return d("HIGH", "R4_HIGH_IMPACT",
                      "Task could drive a consequential decision about a person or money; a human must review.")
 
