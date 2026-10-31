@@ -24,7 +24,7 @@ def handle(method, path, body):
     data = json.loads(body) if body else {}
     try:
         if path == "/api/tools":
-            out = gateway.tools()
+            out = {**gateway.tools(), "demo": True}
         elif path == "/api/ask":
             out = gateway.ask(_need(data, "user"), _need(data, "tool_id"), _need(data, "prompt", 20000),
                               data.get("data_class", "internal"))
@@ -37,6 +37,10 @@ def handle(method, path, body):
             out = gateway.audit.entries(100)
         elif path == "/api/audit/verify":
             out = gateway.audit.verify()
+        elif path == "/api/audit/tamper" and method == "POST":
+            out = gateway.audit.simulate_tamper()
+        elif path == "/api/audit/restore" and method == "POST":
+            out = gateway.audit.restore()
         elif path == "/api/stats":
             out = gateway.audit.summary()
         else:

@@ -14,6 +14,9 @@ ROOT = Path(__file__).resolve().parent.parent
 gateway = Gateway(os.getenv("SAFELANE_REGISTER", ROOT / "config" / "register.yaml"),
                   os.getenv("SAFELANE_AUDIT_DB", "safelane_audit.db"))
 
+# Demo controls (the audit tamper simulation). Set SAFELANE_DEMO=0 outside a demo.
+DEMO = os.getenv("SAFELANE_DEMO", "1") != "0"
+
 app = FastAPI(title="SafeLane AI Gateway", version="0.1.0")
 
 
@@ -44,7 +47,7 @@ def ui():
 
 @app.get("/api/tools")
 def tools():
-    return gateway.tools()
+    return {**gateway.tools(), "demo": DEMO}
 
 
 @app.post("/api/ask")
@@ -70,6 +73,20 @@ def audit_log(limit: int = 100):
 @app.get("/api/audit/verify")
 def audit_verify():
     return gateway.audit.verify()
+
+
+@app.post("/api/audit/tamper")
+def audit_tamper():
+    if not DEMO:
+        raise HTTPException(404, "Not found")
+    return gateway.audit.simulate_tamper()
+
+
+@app.post("/api/audit/restore")
+def audit_restore():
+    if not DEMO:
+        raise HTTPException(404, "Not found")
+    return gateway.audit.restore()
 
 
 @app.get("/api/stats")

@@ -66,7 +66,7 @@ flowchart LR
 | `static/pyodide-api.js` | In-browser backend for the online demo: runs the same `safelane` package via Pyodide |
 | `config/register.yaml` | Example AI Tools Register + sensitive internal terms |
 | `eval/` | Synthetic test sets, evaluation script, results |
-| `tests/` | 16 automated tests |
+| `tests/` | 17 automated tests |
 
 ### Policy rules (evaluated in order; the first match wins)
 
@@ -96,7 +96,9 @@ pip install -r requirements.txt
 uvicorn safelane.main:app --reload
 ```
 
-Open http://localhost:8000 and use the sample buttons (Personal info, API key, Hiring decision, Wrapper plugin, Injection…). Approve a held request in **Review queue** under a *different* name, then click **Verify audit chain** under **Audit log**.
+Open http://localhost:8000 and use the sample buttons (Personal info, API key, Hiring decision, Wrapper plugin, Injection…). Approve a held request in **Review queue** under a *different* name, then click **Verify chain** under **Audit log**.
+
+The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, from redaction to a blocked self-approval to a caught tampering attempt. **Simulate tampering** under **Audit log** edits one stored entry without updating its hash, so you can watch verification fail and then restore it. It is a demo control: set `SAFELANE_DEMO=0` to remove it from the API.
 
 **Use a real model (optional).** By default a mock model is used, so nothing leaves your machine and no API key is needed. To use a local model:
 ```bash
@@ -106,7 +108,7 @@ export SAFELANE_LLM_MODEL=qwen3:4b-instruct
 
 **Tests and evaluation**
 ```bash
-pytest -q                                   # 16 tests
+pytest -q                                   # 17 tests
 python eval/run_eval.py eval/heldout.jsonl  # also: prompts.jsonl, adversarial.jsonl
 ```
 

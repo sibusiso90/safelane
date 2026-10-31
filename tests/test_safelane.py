@@ -99,6 +99,17 @@ def test_audit_chain_detects_tampering(tmp_path):
     assert not v["ok"] and v["broken_at_id"] == 3
 
 
+def test_tamper_demo_covers_up_risky_request_and_restores(tmp_path):
+    log = AuditLog(str(tmp_path / "a.db"))
+    log.append("request", {"tier": "HIGH"})
+    log.append("request", {"tier": "LOW"})
+    t = log.simulate_tamper()
+    assert t == {"ok": True, "id": 1, "field": "tier", "from": "HIGH", "to": "LOW"}
+    assert log.verify() == {"ok": False, "entries_checked": 1, "broken_at_id": 1}
+    assert log.restore()["ok"] and log.verify()["ok"]
+    assert not log.restore()["ok"]
+
+
 # ---------- API ----------
 def test_api_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("SAFELANE_AUDIT_DB", str(tmp_path / "api.db"))

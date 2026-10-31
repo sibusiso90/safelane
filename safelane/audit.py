@@ -19,6 +19,7 @@ GENESIS = "0" * 64
 class AuditLog:
     def __init__(self, path: str = "safelane_audit.db"):
         self._lock = threading.Lock()
+        self._tampered: dict | None = None  # original row kept by simulate_tamper()
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute(
             """CREATE TABLE IF NOT EXISTS audit (
@@ -63,6 +64,40 @@ class AuditLog:
                 return {"ok": False, "entries_checked": n, "broken_at_id": id_}
             prev = h
         return {"ok": True, "entries_checked": n}
+
+    def simulate_tamper(self) -> dict:
+        """Demo only: rewrite one stored entry the way an insider with database access
+        might, without recomputing its hash. Prefers covering up the latest HIGH or
+        BLOCKED request by marking it LOW. `restore()` puts the original back."""
+        with self._lock:
+            if self._tampered:
+                return self._tampered["info"]
+            rows = self.db.execute("SELECT id, event, payload FROM audit ORDER BY id DESC").fetchall()
+            if not rows:
+                return {"ok": False, "detail": "The log is empty. Send a request first."}
+            requests = [r for r in rows if r[1] == "request"]
+            risky = [r for r in requests if json.loads(r[2]).get("tier") in ("HIGH", "BLOCKED")]
+            id_, event, body = (risky or requests or rows)[0]
+            p = json.loads(body)
+            if event == "request":
+                change = {"field": "tier", "from": p["tier"], "to": "LOW"}
+            else:
+                change = {"field": "user", "from": p.get("user", ""), "to": "someone-else"}
+            p[change["field"]] = change["to"]
+            self.db.execute("UPDATE audit SET payload = ? WHERE id = ?", (json.dumps(p, sort_keys=True), id_))
+            self.db.commit()
+            info = {"ok": True, "id": id_, **change}
+            self._tampered = {"id": id_, "payload": body, "info": info}
+            return info
+
+    def restore(self) -> dict:
+        with self._lock:
+            if not self._tampered:
+                return {"ok": False, "detail": "Nothing to restore."}
+            t, self._tampered = self._tampered, None
+            self.db.execute("UPDATE audit SET payload = ? WHERE id = ?", (t["payload"], t["id"]))
+            self.db.commit()
+            return {"ok": True, "id": t["id"]}
 
     def summary(self) -> dict:
         rows = self.db.execute("SELECT event, payload FROM audit").fetchall()
