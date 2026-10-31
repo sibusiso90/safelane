@@ -91,14 +91,25 @@ def strong_secret(raw: str) -> bool:
     return len(v) >= 6 and bool(re.search(r"[\d\W_]", v)) and v.lower() not in {"placeholder", "redacted", "xxxxxx", "changeme"}
 
 
+# Words that come before "at" + a website in ordinary writing ("meet us at acme.co.za").
+NOT_MAILBOXES = set("""
+us me him her them you we it i is are was were be been am being available online live found hosted posted
+published located based held here there everything all more details docs documentation page site website
+portal office meet see look find visit apply register book stay work works working arrive arriving start
+starts started open opened closed read download information form forms link links store shop and or but
+only now today tomorrow then also just still even already anytime later soon go went come came buy bought
+order ordered pay paid sign log logged signed check click shared share listed list registered
+""".split())
+
+
 def obfuscated_email(raw: str) -> bool:
-    """`word at domain.co.za` is ordinary English ("meet us at acme.co.za"). Count it when the
-    writer spelled out a dot, used a bracketed [at] / (at), or wrote a part before "at" that
-    looks like an address ("thandeka.zulu", "j_smith", "ops2")."""
+    """A spelled-out address ("thabo at acme dot co dot za", "thabo[at]acme.co.za") counts.
+    So does "word at domain.tld", unless the word is an ordinary one that comes before a
+    website in normal writing ("meet us at acme.co.za"): when unsure, redact."""
     if re.search(r"(?i)\[(?:at|dot)\]|\((?:at|dot)\)|\sdot\s", raw):
         return True
     local = re.split(r"(?i)\s+at\s+", raw, maxsplit=1)[0]
-    return bool(re.search(r"[._+\-\d]", local))
+    return local.lower() not in NOT_MAILBOXES
 
 
 def complex_secret(raw: str) -> bool:

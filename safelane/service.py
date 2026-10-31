@@ -37,9 +37,9 @@ class Gateway:
         self._lock = threading.Lock()
 
     # ---------- sign-in ----------
-    def login(self, username: str, password: str) -> dict:
+    def login(self, username: str, password: str, client: str = "local") -> dict:
         try:
-            token, acct = self._accounts().login(username, password)
+            token, acct = self._accounts().login(username, password, client)
         except AuthError as e:
             if e.status in (401, 429):
                 # Name the account only if it exists: a typed username can be a mistyped password.

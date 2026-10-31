@@ -31,7 +31,7 @@ def handle(method, path, body, token):
             out = {**gateway.tools(), "demo": True, "demo_accounts": gateway.demo_accounts(),
                    "demo_password": gateway.accounts.demo_password}
         elif path == "/api/login" and method == "POST":
-            out = gateway.login(_need(data, "username", 64), _need(data, "password", 256))
+            out = gateway.login(_need(data, "username", 64), _need(data, "password", 256), "browser")
         elif path == "/api/logout" and method == "POST":
             out = gateway.logout(token)
         else:

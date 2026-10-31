@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -82,8 +82,10 @@ def tools():
 
 
 @app.post("/api/login")
-def login(body: LoginIn):
-    return _call(gateway.login, body.username, body.password)
+def login(body: LoginIn, request: Request):
+    # Behind a reverse proxy, run uvicorn with --proxy-headers so this is the real client.
+    client = request.client.host if request.client else "unknown"
+    return _call(gateway.login, body.username, body.password, client)
 
 
 @app.post("/api/logout")

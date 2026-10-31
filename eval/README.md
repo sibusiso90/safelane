@@ -72,7 +72,7 @@ On held-out 4, which is the most independent test so far, v5 is clearly better t
 - **An e-mail with spelled-out dots in its first part** (*thandeka dot zulu at acmeutilities dot co dot za*): it was redacted, but as the wrong span (*me at thandeka dot zulu*), so part of the address went out.
 - **One over-redaction:** *Heritage Day* was taken for a name.
 
-After scoring, an automated security review pointed out that requiring a spelled-out *dot* let an address like *thandeka.zulu at acme.co.za* through. The plain *at* form now also counts when the part before it looks like an address (it has `.`, `_`, `+`, `-` or a digit). A single plain word before *at* (*us at acme.co.za*) is still not redacted, which is the trade-off. Every set, including held-out 4, scores the same with this change, so no number above moved.
+After scoring, an automated security review pointed out that requiring a spelled-out *dot* let an address like *thandeka.zulu at acme.co.za* through. The rule was then turned around, so that it errs towards redacting: *word at domain.tld* counts as an address (so *info at acme.co.za* is caught) unless the word is an ordinary one that comes before a website in normal writing (*us*, *are*, *online*, *visit* …). Every set, including held-out 4, scores the same with this change, so no number above moved.
 
 ## Honest limits
 - **v2 held-out miss, fixed in v3:** `admin / P@ssw0rd2026`, a username/password pair with no "password" label. It was deliberately not patched before v2 was reported. v3's credential-pair rule catches it, and its effect was measured on held-out 2, not on the set that exposed it.

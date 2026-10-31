@@ -89,6 +89,9 @@ def test_v5_names(text, names):
     ("mail thabo at acme dot co dot za", "thabo at acme dot co dot za"),
     ("write to lerato[at]mail.example", "lerato[at]mail.example"),
     ("mail thandeka.zulu at acme.co.za today", "thandeka.zulu at acme.co.za"),  # looks like an address
+    ("write to info at acme.co.za", "info at acme.co.za"),                      # one word, still an address
+    ("Details are at acme-utilities.co.za", None),
+    ("Sign up online at acme.co.za", None),
 ])
 def test_obfuscated_email_needs_a_spelled_dot_or_brackets(text, email):
     found = [d.value for d in Redactor().detect(text) if d.kind == "EMAIL"]
@@ -525,3 +528,25 @@ def test_audit_head_can_live_elsewhere(tmp_path, monkeypatch):
     log.append("request", {"tier": "LOW"})
     assert (tmp_path / "worm" / "head.json").exists() and not (tmp_path / "a.db.head").exists()
     assert log.verify()["ok"]
+
+
+def test_lockout_is_per_client_so_owners_are_not_locked_out():
+    a = Accounts(ACCOUNTS)
+    for _ in range(5):
+        with pytest.raises(Exception):
+            a.login("thandi", "wrong", client="203.0.113.9")
+    with pytest.raises(Exception) as e:
+        a.login("thandi", PW, client="203.0.113.9")
+    assert e.value.status == 429                              # the guessing client is locked
+    assert a.login("thandi", PW, client="10.0.0.5")[1].username == "thandi"  # the owner is not
+
+
+def test_one_client_cannot_spray_many_accounts():
+    a = Accounts(ACCOUNTS)
+    users = ["u%d" % i for i in range(20)]
+    for u in users:
+        with pytest.raises(Exception):
+            a.login(u, "wrong", client="198.51.100.7")
+    with pytest.raises(Exception) as e:
+        a.login("sipho", PW, client="198.51.100.7")
+    assert e.value.status == 429

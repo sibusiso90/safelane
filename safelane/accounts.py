@@ -30,7 +30,10 @@ ROLES = {
     "admin": {"audit", "view_reviews", "demo_controls"},
 }
 SESSION_TTL = 8 * 3600
-MAX_FAILURES, LOCKOUT_WINDOW = 5, 15 * 60
+# Failed sign-ins are counted per (username, client) pair, so a stranger guessing at an
+# account cannot lock its owner out from elsewhere, and per client across all usernames,
+# so one client cannot spray guesses over many accounts.
+MAX_FAILURES, MAX_CLIENT_FAILURES, LOCKOUT_WINDOW = 5, 20, 15 * 60
 ITERATIONS = 600_000
 
 
@@ -118,7 +121,7 @@ class Accounts:
             acct = Account(u["username"].lower(), u["name"], u["role"], u.get("department", ""))
             self._users[acct.username] = (acct, u["password_hash"])
         self._sessions: dict[str, tuple[Account, float]] = {}
-        self._failures: dict[str, list[float]] = {}
+        self._failures: dict[tuple, list[float]] = {}
         self._lock = threading.Lock()
 
     def exists(self, username: str) -> bool:
@@ -127,23 +130,27 @@ class Accounts:
     def directory(self) -> list[dict]:
         return [a.view() for a, _ in self._users.values()]
 
-    def login(self, username: str, password: str) -> tuple[str, Account]:
+    def login(self, username: str, password: str, client: str = "local") -> tuple[str, Account]:
         key = username.strip().lower()
         now = time.time()
+        buckets = [((key, client), MAX_FAILURES), (("*", client), MAX_CLIENT_FAILURES)]
         with self._lock:
             # Count the attempt before the slow hash, so parallel guesses cannot all slip
-            # under the limit; a successful sign-in clears the count.
-            recent = [t for t in self._failures.get(key, []) if now - t < LOCKOUT_WINDOW]
-            if len(recent) >= MAX_FAILURES:
-                self._failures[key] = recent
+            # under the limit; a successful sign-in clears the count for that account.
+            recent = {b: [t for t in self._failures.get(b, []) if now - t < LOCKOUT_WINDOW] for b, _ in buckets}
+            if any(len(recent[b]) >= limit for b, limit in buckets):
+                self._failures.update(recent)
                 raise AuthError(429, "Too many failed sign-ins. Try again in 15 minutes.")
-            self._failures[key] = recent + [now]
+            for b, _ in buckets:
+                self._failures[b] = recent[b] + [now]
         acct, stored = self._users.get(key) or (None, _dummy_hash())
         if not check_password(password, stored) or acct is None:
             raise AuthError(401, "Wrong username or password.")
         token = secrets.token_urlsafe(32)
         with self._lock:
-            self._failures.pop(key, None)
+            self._failures.pop((key, client), None)
+            if self._failures.get(("*", client)):
+                self._failures[("*", client)].pop()  # this attempt was not a failure
             self._sessions = {t: s for t, s in self._sessions.items() if s[1] > now}  # drop expired
             self._sessions[token] = (acct, now + SESSION_TTL)
         return token, acct
