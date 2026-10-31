@@ -131,7 +131,9 @@ class PolicyEngine:
     def evaluate(self, prompt: str, tool_id: str, declared_class: str = "internal") -> Decision:
         tool = self.register.get(tool_id)
         red = self.redactor.redact(prompt)
-        plain, _ = normalise(prompt)  # v4: hidden characters cannot split "ignore" or "dismiss"
+        # v4: check the raw prompt and a cleaned copy, so a hidden character can neither split
+        # "ignore" nor glue "ignore" to the next word and slip past the rule.
+        views = (prompt, normalise(prompt)[0])
         original_class = _max_class([declared_class] + [KIND_TO_CLASS[k] for k in red.kinds])
         # After redaction, the detected values are gone; what remains is the user's declared class.
         residual_class = declared_class
@@ -151,7 +153,7 @@ class PolicyEngine:
                      f"'{tool['name']}' is {status.replace('_', ' ')} on the AI Tools Register.",
                      self.register.approved_for(residual_class))
 
-        if MISUSE.search(plain):
+        if any(MISUSE.search(v) for v in views):
             flags.append("Security event: control-evasion or prompt-injection pattern")
             return d("BLOCKED", "R2_MISUSE", "Prompt matches a misuse / prompt-injection pattern.")
 
@@ -162,7 +164,7 @@ class PolicyEngine:
                      [t for t in self.register.approved_for("secret") if self.register.get(t)["hosting"] == "on_prem"]
                      or self.register.approved_for("confidential"))
 
-        if high_impact(plain):
+        if any(high_impact(v) for v in views):
             return d("HIGH", "R4_HIGH_IMPACT",
                      "Task could drive a consequential decision about a person or money; a human must review.")
 

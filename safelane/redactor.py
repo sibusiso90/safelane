@@ -26,6 +26,9 @@ v4 changes (scored on eval/heldout_v4.jsonl, which was written and committed fir
   (fullwidth ０-９) become ASCII, and runs of spoken digits ("eight zero zero ...",
   "double five", Afrikaans "agt nul") become numbers. An offset map points each
   detection back at the original characters, so redaction replaces exactly those.
+  The detectors also still run on the raw text, and the results are merged, so
+  normalising can only add detections: a removed character cannot glue a number to
+  its neighbour, and spoken digits cannot swallow a phone number written beside them.
 """
 from __future__ import annotations
 
@@ -49,7 +52,7 @@ def luhn_ok(digits: str) -> bool:
 
 
 def _digits(s: str) -> str:
-    return re.sub(r"\D", "", s)
+    return "".join(str(int(d)) for d in re.findall(r"\d", s))  # fullwidth and other digits as ASCII
 
 
 def sa_id_ok(raw: str) -> bool:
@@ -195,8 +198,8 @@ def _spoken_digits(run: re.Match) -> list[tuple[str, int, int]] | None:
     return out if spoken >= 3 and len(out) >= 7 else None
 
 
-def normalise(text: str) -> tuple[str, list[tuple[int, int]]]:
-    """The text detectors see, and for each of its characters the span it came from in `text`."""
+def normalise(text: str, spoken: bool = True) -> tuple[str, list[tuple[int, int]]]:
+    """A cleaned-up view of `text`, and for each of its characters the span it came from in `text`."""
     chars: list[str] = []
     spans: list[tuple[int, int]] = []
     for i, ch in enumerate(text):
@@ -207,6 +210,8 @@ def normalise(text: str) -> tuple[str, list[tuple[int, int]]]:
         chars += ch
         spans += [(i, i + 1)] * len(ch)
     flat = "".join(chars)
+    if not spoken:
+        return flat, spans
     out: list[str] = []
     out_spans: list[tuple[int, int]] = []
     pos = 0
@@ -300,16 +305,24 @@ class Redactor:
 
     def detect(self, text: str) -> list[Detection]:
         found: list[Detection] = []
-        taken: list[tuple[int, int]] = []  # spans in the normalised view
-        view, spans = normalise(text)
+        views = [(text, [(i, i + 1) for i in range(len(text))]), normalise(text, spoken=False), normalise(text)]
+        for view, spans in views:
+            for kind, s, e in self._detect_view(view):
+                a, b = spans[s][0], spans[e - 1][1]
+                overlap = [d for d in found if a < d.end and b > d.start]
+                # A later view may widen a detection (the whole spoken number), never drop one.
+                if all(a <= d.start and d.end <= b and (b - a) > (d.end - d.start) for d in overlap):
+                    found = [d for d in found if d not in overlap] + [Detection(kind, text[a:b], a, b)]
+        return sorted(found, key=lambda d: d.start)
+
+    def _detect_view(self, view: str) -> list[tuple[str, int, int]]:
+        found: list[tuple[str, int, int]] = []
 
         def free(s: int, e: int) -> bool:
-            return all(e <= a or s >= b for a, b in taken)
+            return all(e <= a or s >= b for _, a, b in found)
 
         def add(kind, s, e):
-            a, b = spans[s][0], spans[e - 1][1]
-            found.append(Detection(kind, text[a:b], a, b))
-            taken.append((s, e))
+            found.append((kind, s, e))
 
         for kind, pat, check, ref_ctx in _DETECTORS:
             for m in pat.finditer(view):
@@ -335,7 +348,7 @@ class Redactor:
                 span = _trim_name(view, m.start(1), m.end(1))
                 if span and free(*span):
                     add("NAME", *span)
-        return sorted(found, key=lambda d: d.start)
+        return found
 
     def redact(self, text: str) -> RedactionResult:
         dets = self.detect(text)

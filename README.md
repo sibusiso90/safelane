@@ -108,7 +108,7 @@ export SAFELANE_LLM_MODEL=qwen3:4b-instruct
 
 **Tests and evaluation**
 ```bash
-pytest -q                                   # 49 tests
+pytest -q                                   # 54 tests
 python eval/run_eval.py eval/heldout_v4.jsonl  # also: heldout, heldout_v3, prompts, adversarial
 ```
 
