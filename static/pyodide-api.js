@@ -55,7 +55,7 @@ const handle = (async () => {
   const py = await loadPyodide({ indexURL: PYODIDE });
   await py.loadPackage("pyyaml");
   for (const f of FILES) {
-    const r = await fetch(f);
+    const r = await fetch(f, { cache: "no-cache" }); // revalidate, so a redeploy is picked up at once
     if (!r.ok) throw new Error(`Could not load ${f}`);
     py.FS.mkdirTree(f.slice(0, f.lastIndexOf("/")));
     py.FS.writeFile(f, await r.text());

@@ -378,7 +378,7 @@ function setMode(state, title, text){
 }
 async function useBrowserBackend(){
   setMode("busy", "Starting in your browser", "Loading Python via WebAssembly. First load takes a few seconds.");
-  browserApi = (await import("./pyodide-api.js")).call;
+  browserApi = (await import(`./pyodide-api.js?v=${Date.now()}`)).call; // never a stale copy after a redeploy
   await j("/api/tools");
   setMode("live", "Running in your browser", "Nothing you type leaves this page.");
 }
