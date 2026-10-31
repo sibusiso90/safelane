@@ -98,7 +98,7 @@ uvicorn safelane.main:app --reload
 
 Open http://localhost:8000 and use the sample buttons (Personal info, API key, Hiring decision, Wrapper plugin, Injection…). Approve a held request in **Review queue** under a *different* name, then click **Verify chain** under **Audit log**.
 
-The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, from redaction to a blocked self-approval to a caught tampering attempt. **Simulate tampering** under **Audit log** edits one stored entry without updating its hash, so you can watch verification fail and then restore it. It is a demo control: set `SAFELANE_DEMO=0` to remove it from the API.
+The quickest tour is **Guided demo** on the Ask AI page: nine steps, one click each, from redaction to a blocked self-approval to a caught tampering attempt. **Simulate tampering** under **Audit log** edits one stored entry without updating its hash, so you can watch verification fail and then restore it. The online demo always shows it (each visitor has their own in-browser log). Locally it is off by default, because it lets anyone who can reach the API edit the log; start the server with `SAFELANE_DEMO=1 uvicorn safelane.main:app` to show it.
 
 **Use a real model (optional).** By default a mock model is used, so nothing leaves your machine and no API key is needed. To use a local model:
 ```bash

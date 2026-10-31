@@ -14,8 +14,9 @@ ROOT = Path(__file__).resolve().parent.parent
 gateway = Gateway(os.getenv("SAFELANE_REGISTER", ROOT / "config" / "register.yaml"),
                   os.getenv("SAFELANE_AUDIT_DB", "safelane_audit.db"))
 
-# Demo controls (the audit tamper simulation). Set SAFELANE_DEMO=0 outside a demo.
-DEMO = os.getenv("SAFELANE_DEMO", "1") != "0"
+# Demo controls (the audit tamper simulation) are off unless SAFELANE_DEMO=1: they let
+# anyone who can reach the API edit the audit log, so they must never run in production.
+DEMO = os.getenv("SAFELANE_DEMO") == "1"
 
 app = FastAPI(title="SafeLane AI Gateway", version="0.1.0")
 
