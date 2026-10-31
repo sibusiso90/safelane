@@ -550,3 +550,20 @@ def test_one_client_cannot_spray_many_accounts():
     with pytest.raises(Exception) as e:
         a.login("sipho", PW, client="198.51.100.7")
     assert e.value.status == 429
+
+
+def test_many_clients_together_hit_the_account_limit():
+    a = Accounts(ACCOUNTS)
+    for i in range(50):  # 10 clients x 5 guesses each
+        with pytest.raises(Exception):
+            a.login("thandi", "wrong", client=f"192.0.2.{i // 5}")
+    with pytest.raises(Exception) as e:
+        a.login("thandi", PW, client="10.0.0.5")
+    assert e.value.status == 429
+
+
+def test_ipv6_clients_are_grouped_by_64():
+    from safelane.accounts import client_key
+    assert client_key("2001:db8:1:2::1") == client_key("2001:db8:1:2:ffff::9") == "2001:db8:1:2::/64"
+    assert client_key("2001:db8:1:3::1") != client_key("2001:db8:1:2::1")
+    assert client_key("203.0.113.9") == "203.0.113.9" and client_key("browser") == "browser"

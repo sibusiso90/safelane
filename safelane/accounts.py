@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import secrets
 import threading
 import time
@@ -31,9 +32,11 @@ ROLES = {
 }
 SESSION_TTL = 8 * 3600
 # Failed sign-ins are counted per (username, client) pair, so a stranger guessing at an
-# account cannot lock its owner out from elsewhere, and per client across all usernames,
-# so one client cannot spray guesses over many accounts.
-MAX_FAILURES, MAX_CLIENT_FAILURES, LOCKOUT_WINDOW = 5, 20, 15 * 60
+# account cannot lock its owner out from elsewhere; per client across all usernames, so one
+# client cannot spray guesses over many accounts; and per account across all clients, with a
+# higher limit, so many clients together cannot guess without end. Locking an owner out that
+# way takes at least MAX_ACCOUNT_FAILURES / MAX_FAILURES separate clients.
+MAX_FAILURES, MAX_CLIENT_FAILURES, MAX_ACCOUNT_FAILURES, LOCKOUT_WINDOW = 5, 20, 50, 15 * 60
 ITERATIONS = 600_000
 
 
@@ -110,6 +113,15 @@ class AuthError(Exception):
         self.status, self.detail = status, detail
 
 
+def client_key(client: str) -> str:
+    """IPv6 clients are counted by /64 network: one attacker usually holds a whole /64."""
+    try:
+        ip = ipaddress.ip_address(client)
+    except ValueError:
+        return client
+    return str(ipaddress.ip_network(f"{ip}/64", strict=False)) if ip.version == 6 else str(ip)
+
+
 class Accounts:
     def __init__(self, path: str | Path):
         data = yaml.safe_load(Path(path).read_text()) or {}
@@ -131,9 +143,10 @@ class Accounts:
         return [a.view() for a, _ in self._users.values()]
 
     def login(self, username: str, password: str, client: str = "local") -> tuple[str, Account]:
-        key = username.strip().lower()
+        key, client = username.strip().lower(), client_key(client)
         now = time.time()
-        buckets = [((key, client), MAX_FAILURES), (("*", client), MAX_CLIENT_FAILURES)]
+        buckets = [((key, client), MAX_FAILURES), (("*", client), MAX_CLIENT_FAILURES),
+                   ((key, "*"), MAX_ACCOUNT_FAILURES)]
         with self._lock:
             # Count the attempt before the slow hash, so parallel guesses cannot all slip
             # under the limit; a successful sign-in clears the count for that account.
@@ -149,8 +162,9 @@ class Accounts:
         token = secrets.token_urlsafe(32)
         with self._lock:
             self._failures.pop((key, client), None)
-            if self._failures.get(("*", client)):
-                self._failures[("*", client)].pop()  # this attempt was not a failure
+            for b in (("*", client), (key, "*")):
+                if self._failures.get(b):
+                    self._failures[b].pop()  # this attempt was not a failure
             self._sessions = {t: s for t, s in self._sessions.items() if s[1] > now}  # drop expired
             self._sessions[token] = (acct, now + SESSION_TTL)
         return token, acct
