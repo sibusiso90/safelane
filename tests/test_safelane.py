@@ -581,5 +581,5 @@ def test_ipv6_clients_are_grouped_by_64():
     assert client_key("203.0.113.9") == "203.0.113.9" and client_key("browser") == "browser"
     assert client_key("::ffff:203.0.113.9") == "203.0.113.9"           # IPv4-mapped is not one shared /64
     assert client_key("::ffff:198.51.100.1") != client_key("::ffff:203.0.113.9")
-    assert client_key("2002:cb00:7109::1") == "203.0.113.9"             # 6to4
+    assert client_key("2002:cb00:7109::1") != "203.0.113.9"             # 6to4 can be forged: not trusted as IPv4
     assert client_key("::1") == "::1"                                    # loopback stays itself

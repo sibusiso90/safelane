@@ -116,17 +116,18 @@ class AuthError(Exception):
 
 
 def client_key(client: str) -> str:
-    """IPv6 clients are counted by /64 network: one attacker usually holds a whole /64. IPv4
-    written as IPv6 (::ffff:1.2.3.4, 6to4, Teredo) is counted as the IPv4 address it carries,
-    or every IPv4 client of a dual-stack server would share one /64."""
+    """IPv6 clients are counted by /64 network: one attacker usually holds a whole /64. An
+    IPv4-mapped address (::ffff:1.2.3.4) is counted as its IPv4 address, or every IPv4 client
+    of a dual-stack server would share one /64; the server's own socket makes that form, so
+    it cannot be forged. 6to4 and Teredo addresses can be chosen by the sender, so they are
+    grouped like any other IPv6 address rather than trusted to name an IPv4 client."""
     try:
         ip = ipaddress.ip_address(client)
     except ValueError:
         return client
     if ip.version == 6:
-        v4 = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None)
-        if v4:
-            return str(v4)
+        if ip.ipv4_mapped:
+            return str(ip.ipv4_mapped)
         if not ip.is_loopback:
             return str(ipaddress.ip_network(f"{ip}/64", strict=False))
     return str(ip)
